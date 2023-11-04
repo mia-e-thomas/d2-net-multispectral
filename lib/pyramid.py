@@ -41,6 +41,7 @@ def process_multiscale(image, model, scales=[.5, 1, 2]):
 
         # Recover detections.
         detections = model.detection(dense_features)
+        # (I think) ban repeating detections
         if banned is not None:
             banned = F.interpolate(banned.float(), size=[h, w]).bool()
             detections = torch.min(detections, ~banned)

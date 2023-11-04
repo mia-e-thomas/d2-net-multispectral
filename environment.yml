@@ -1,0 +1,23 @@
+name: d2-net
+channels:
+- defaults
+- pytorch
+dependencies:
+- python=3.7.2
+- pytorch
+- torchvision
+- cudatoolkit=10.0
+- h5py 
+- imageio
+- imagesize
+- numpy
+- scipy
+- tqdm
+- pip
+- pip:
+  - pyyaml
+  - opencv-python
+  - opencv-contrib-python
+  - matplotlib
+  #- -e ../multipoint (manually install w/ pip install ../multipoint) (no -e)
+

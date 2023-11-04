@@ -1,3 +1,4 @@
+.*
 __pycache__
 .vscode
 checkpoints*
@@ -12,3 +13,4 @@ hpatches_sequences/cache-top
 .ipynb_checkpoints
 vlfeat
 *.d2-net
+multipoint_data

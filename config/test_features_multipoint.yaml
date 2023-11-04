@@ -1,0 +1,26 @@
+dataset: 
+    filename: ./multipoint_data/test.hdf5
+    single_image: False
+    random_pairs: False
+    return_name : True
+    augmentation: 
+        photometric: 
+            enable: False
+            primitives: all
+            params: 
+            random_order: True
+        homographic: 
+            enable: True
+            params: {} 
+            border_reflect: False
+            valid_border_margin: 0
+            mask_border: True
+
+feature_type: 'd2-net' # d2-net or sift
+
+repeatability: 
+    threshold: 4
+
+matching: 
+    ratio: 1 # Ratio test ratio
+    threshold: 4  # Distance below which two points are considered a match

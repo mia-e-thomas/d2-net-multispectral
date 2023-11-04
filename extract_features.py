@@ -81,14 +81,19 @@ model = D2Net(
 # Process the file
 with open(args.image_list_file, 'r') as f:
     lines = f.readlines()
-for line in tqdm(lines, total=len(lines)):
-    path = line.strip()
 
+# Go image by image
+for line in tqdm(lines, total=len(lines)):
+    # Load image
+    path = line.strip()
     image = imageio.imread(path)
+
+    # Convert to (H,W,3) (RGB) image
     if len(image.shape) == 2:
         image = image[:, :, np.newaxis]
         image = np.repeat(image, 3, -1)
 
+    # Resize image if too large
     # TODO: switch to PIL.Image due to deprecation of scipy.misc.imresize.
     resized_image = image
     if max(resized_image.shape) > args.max_edge:
@@ -102,13 +107,17 @@ for line in tqdm(lines, total=len(lines)):
             args.max_sum_edges / sum(resized_image.shape[: 2])
         ).astype('float')
 
+    # Get scale factor for resizing
     fact_i = image.shape[0] / resized_image.shape[0]
     fact_j = image.shape[1] / resized_image.shape[1]
 
+    # Preprocess image (e.g., normalizing)
     input_image = preprocess_image(
         resized_image,
         preprocessing=args.preprocessing
     )
+    
+    # Get keypoints, scores, descriptors
     with torch.no_grad():
         if args.multiscale:
             keypoints, scores, descriptors = process_multiscale(
@@ -129,11 +138,16 @@ for line in tqdm(lines, total=len(lines)):
             )
 
     # Input image coordinates
+    # Upscale locations by reduction factor from earlier
     keypoints[:, 0] *= fact_i
     keypoints[:, 1] *= fact_j
+
     # i, j -> u, v
+    # Rearrange the columns from [a, b, c] to [b, a, c]
+    # TODO: Figure out why this is changed
     keypoints = keypoints[:, [1, 0, 2]]
 
+    # Save
     if args.output_type == 'npz':
         with open(path + args.output_extension, 'wb') as output_file:
             np.savez(

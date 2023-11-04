@@ -59,8 +59,15 @@ class SoftDetectionModule(nn.Module):
 
         batch = F.relu(batch)
 
+        # Get the maximum value for each batch item (whole image)
         max_per_sample = torch.max(batch.view(b, -1), dim=1)[0]
+        
+        # 1) Divide each batch item by its maximum value
+        # 2) Take the exponential of the semi-normalized values [0-1]
         exp = torch.exp(batch / max_per_sample.view(b, 1, 1, 1))
+        # 1) Pad 'exp' at edges w/ constant (value 1 at edges!)
+        # 2) Average pool 
+        # 3) Sum
         sum_exp = (
             self.soft_local_max_size ** 2 *
             F.avg_pool2d(
@@ -70,6 +77,7 @@ class SoftDetectionModule(nn.Module):
         )
         local_max_score = exp / sum_exp
 
+        # Take max in another direction
         depth_wise_max = torch.max(batch, dim=1)[0]
         depth_wise_max_score = batch / depth_wise_max.unsqueeze(1)
 
