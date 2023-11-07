@@ -9,7 +9,7 @@ import scipy.io
 import scipy.misc
 
 from lib.model_test import D2Net
-from lib.utils import preprocess_image
+from lib.utils import preprocess_image, preprocess_multipoint
 from lib.pyramid import process_multiscale
 
 # Added
@@ -28,7 +28,7 @@ def main():
     parser.add_argument('--model_file', type=str, default='models/d2_tf.pth', help='path to the full model')
     parser.add_argument('--multiscale', dest='multiscale', action='store_true', default=False, help='extract multiscale features')
     parser.add_argument('--no-relu', dest='use_relu', default = True, action='store_false', help='remove ReLU after the dense feature extraction module') # Calling flag will store false
-    parser.add_argument('--preprocessing', type=str, default='caffe', help='image preprocessing (caffe or torch)')
+    parser.add_argument('--preprocessing', type=str, default='torch', help='image preprocessing (caffe or torch)')
     parser.add_argument('--max_edge', type=int, default=1600, help='maximum image size at network input')
     parser.add_argument('--max_sum_edges', type=int, default=2800, help='maximum sum of image sizes at network input')
     # Output
@@ -36,7 +36,7 @@ def main():
     parser.add_argument('--output_type', type=str, default='npz', help='output file type (npz or mat)')
     # Added
     parser.add_argument('-s', '--seed', default=0, type=int, help='Seed of the random generators')
-    parser.add_argument('-y', '--yaml-config', default='config/test_features_multipoint.yaml', help='YAML config file')
+    parser.add_argument('-y', '--yaml-config', default='config/config_test_features.yaml', help='YAML config file')
     args = parser.parse_args()
 
     # ---- YAML Config ---- #
@@ -86,10 +86,10 @@ def main():
     # Load Image
     img_pair = dataset[0] # keys: 'image', 'valid_mask', 'is_optical', 'name'
 
-    # ---- Preprocessing ---- #
-    # Convert Image: Squeeze, CPU, Numpy, 0-255, UINT8, 3 Channel
-    img_optical = tensor_to_cv(img_pair['optical']['image'])
-    img_thermal = tensor_to_cv(img_pair['thermal']['image'])
+    # ---- Preprocessing PART 1 ---- #
+    # Convert Image from [1,H,W], Range 0-1, Float Tensor to (H,W,3), 0-255, UINT8 np.ndarray
+    img_optical = preprocess_multipoint(img_pair['optical']['image'])
+    img_thermal = preprocess_multipoint(img_pair['thermal']['image'])
 
     # ---- Detect & Describe ---- #
     if config['feature_type'] == 'd2-net':
@@ -129,12 +129,16 @@ def main():
 
     # ---- Compute Repeatability ---- #
     # TODO implement
+    '''
     repeatability, repeated_points, total_points = compute_repeatability(kp_optical, img_pair['optical']['homography'], kp_thermal, img_pair['thermal']['homography'], threshold = config['repeatability']['threshold'])
+    '''
     # TODO add to total stats
 
     # ---- Compute MMA ---- #
     # TODO implement
+    '''
     mma, correct_matches, total_matches = compute_correct_matches(kp_optical, img_pair['optical']['homography'], kp_thermal, img_pair['thermal']['homography'], matches, threshold = config['matching']['threshold'])
+    '''
     # TODO add to total stats
 
     #------------------------------------------------------
@@ -169,9 +173,7 @@ def mask_keypoints(keypoints, descriptors, valid_mask_tensor):
     
     return kp_valid, des_valid
 
-def tensor_to_cv(image_tensor): 
-    return cv2.cvtColor((np.clip(image_tensor.squeeze().cpu().numpy(), 0.0, 1.0) * 255.0).astype(np.uint8),cv2.COLOR_GRAY2RGB)
-
+# TODO: update to include preprocessing?
 def im_show(str,img):
     cv2.imshow(str,img)
     cv2.waitKey()
@@ -197,7 +199,7 @@ def d2_net_detect_describe(args, image, model, device):
     fact_i = image.shape[0] / resized_image.shape[0]
     fact_j = image.shape[1] / resized_image.shape[1]
 
-    # Preprocess image (e.g., normalizing)
+    # ---- Preprocessing PART 2 ---- #
     input_image = preprocess_image(
         resized_image,
         preprocessing=args.preprocessing

@@ -8,6 +8,8 @@ from lib.exceptions import EmptyTensorError
 
 
 def preprocess_image(image, preprocessing=None):
+    # Input:  Shape (H,W,3), Range: 0-255, Type: np uint8
+    # Output: Shape (3,H,W), Range: 0-1* (* denotes mean/std normalization), Type: float64
     image = image.astype(np.float32)
     image = np.transpose(image, [2, 0, 1])
     if preprocessing is None:
@@ -27,6 +29,37 @@ def preprocess_image(image, preprocessing=None):
         raise ValueError('Unknown preprocessing parameter.')
     return image
 
+def preprocess_batch(batch, preprocessing=None):
+    # Input:  Shape: [B,1,H,W], Range: 0-1, Type: Tensor Float
+    # Output: Shape: [B,3,H,W], Range: 0-1* (mean/std normalization), Type: Tensor Double
+
+    # Expand
+    batch = np.repeat(batch, 3, axis=1) # Shape: [B,3,H,W]
+    # Vgg 16 normalize
+    if preprocessing is None:
+        pass
+    elif preprocessing == 'torch':
+        mean = np.array([0.485, 0.456, 0.406])
+        std = np.array([0.229, 0.224, 0.225])
+        batch = (batch - mean.reshape([1, 3, 1, 1])) / std.reshape([1, 3, 1, 1])
+    else:
+        raise ValueError('Unknown preprocessing parameter.')
+    # Type: Double
+    return batch.double()
+
+
+def preprocess_multipoint(image, preprocessing=None):
+    # Input:  Shape: [1,H,W], Range: 0-1,   Type: Float Tensor
+    # Output: Shape: (H,W,3), Range: 0-255, Type: uint8 np
+
+    # 1. Squeeze & numpy
+    image = image.squeeze().numpy() # Shape: (H,W)
+    # 2: Expand axis
+    image = image[:, :, np.newaxis]
+    image = np.repeat(image, 3, -1) # Shape: (H,W,3)
+    # 3: Change range to 0-255, type to uint8
+    image = (np.clip(image, 0.0, 1.0) * 255.0).astype(np.uint8)
+    return image
 
 def imshow_image(image, preprocessing=None):
     if preprocessing is None:

@@ -42,6 +42,8 @@ class DenseFeatureExtractionModule(nn.Module):
             self.model = self.model.cuda()
 
     def forward(self, batch):
+        # ADDED
+        self.model.to(torch.double)
         output = self.model(batch)
         return output
 

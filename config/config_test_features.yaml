@@ -15,8 +15,9 @@ dataset:
             border_reflect: False
             valid_border_margin: 0
             mask_border: True
+    preprocess: 'torch' # ADDED: 'torch', 'caffe', or 'None'
 
-feature_type: 'd2-net' # d2-net or sift
+feature_type: 'sift' # 'd2-net' or 'sift'
 
 repeatability: 
     threshold: 4
