@@ -1,12 +1,12 @@
 dataset:
     filename: multipoint_data/training.hdf5
     single_image: false
-    random_pairs: true
+    random_pairs: false # TODO: Consider changing this when tuning
     height: 240
     width: 320
     augmentation:
         photometric:
-            enable: true
+            enable: false # Not going to train or test w/ photometric augmentation (hard to say how valid it is on cross-spectral data)
             primitives: [
                 'random_brightness', 'random_contrast', 'additive_speckle_noise',
                 'additive_gaussian_noise', 'additive_shade', 'motion_blur' ]
@@ -34,6 +34,5 @@ dataset:
                 allow_artifacts: true
                 translation_overflow: 0.05
             valid_border_margin: 0
-            border_reflect: true
-    preprocess: 'torch' # ADDED: 'torch', 'caffe', or 'None'
+            border_reflect: false # CHANGED (default true)
 

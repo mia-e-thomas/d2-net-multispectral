@@ -56,6 +56,7 @@ def main():
     # ---- Device ---- #
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda:0" if use_cuda else "cpu")
+    print("Using device: " + str(device))
 
     # ---- Seed ---- #
     torch.manual_seed(1)
@@ -89,14 +90,14 @@ def main():
         filter(lambda p: p.requires_grad, model.parameters()), lr=args.lr
     )
 
-    # TODO: Change the dataset
-    # TODO: Make sure you're setting 'train=False' when loading validation dataset
+    # TODO: The original code set "train=False" when constructing validation set. See if there's some type of equivalent way you can do that.
     # ---- Dataset ---- #
     training_dataset = ImagePairDataset(config['dataset'])
 
     if args.use_validation:
         # Get training & val lengths 
         len_dataset = len(training_dataset.memberslist)
+        # TODO: make this 20% an argument or yaml parameter
         len_validation = round(0.2*len_dataset)
         len_training = len_dataset - len_validation
         # Split training and validation
@@ -135,9 +136,10 @@ def main():
         )
 
     # Start the training
+    # TODO: make this use tqdm
     for epoch_idx in range(1, args.num_epochs + 1):
         # Process epoch
-        #training_dataset.build_dataset() # Not needed
+        '''training_dataset.build_dataset()''' # From old code
         train_loss_history.append(
             process_epoch(
                 epoch_idx,
@@ -156,6 +158,7 @@ def main():
                 )
             )
 
+        # TODO: change it not to save every epoch
         # Save the current checkpoint
         checkpoint_path = os.path.join(
             args.checkpoint_directory,
@@ -170,10 +173,7 @@ def main():
             'validation_loss_history': validation_loss_history
         }
         torch.save(checkpoint, checkpoint_path)
-        if (
-            args.use_validation and
-            validation_loss_history[-1] < min_validation_loss
-        ):
+        if (args.use_validation and (validation_loss_history[-1] < min_validation_loss)):
             min_validation_loss = validation_loss_history[-1]
             best_checkpoint_path = os.path.join(
                 args.checkpoint_directory,
@@ -198,7 +198,7 @@ def process_epoch(
     progress_bar = tqdm(enumerate(dataloader), total=len(dataloader))
     for batch_idx, batch in progress_bar:
 
-        # TODO: Should this go before or after zero grad?
+        # TODO: Should this go before or after zero grad? Does it even matter?
         # ---- PREPROCESSING ---- #
         # Input:  Shape: [B,1,H,W], Range: 0-1, Type: Tensor Float
         # Output: Shape: [B,3,H,W], Range: 0-1* (mean/std normalization), Type: Tensor Double
@@ -223,7 +223,7 @@ def process_epoch(
         current_loss = loss.data.cpu().numpy()[0]
         epoch_losses.append(current_loss)
 
-        progress_bar.set_postfix(loss=('%.4f' % np.mean(epoch_losses)))
+        progress_bar.set_postfix(loss=('%.4f' % np.mean(epoch_losses)), epoch=epoch_idx)
 
         if batch_idx % args.log_interval == 0:
             log_file.write('[%s] epoch %d - batch %d / %d - avg_loss: %f\n' % (

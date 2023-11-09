@@ -18,7 +18,7 @@ import cv2
 import matplotlib.pyplot as plt
 import random
 import yaml
-
+from torch.utils.data import DataLoader
 
 def main():
 
@@ -37,6 +37,7 @@ def main():
     # Added
     parser.add_argument('-s', '--seed', default=0, type=int, help='Seed of the random generators')
     parser.add_argument('-y', '--yaml-config', default='config/config_test_features.yaml', help='YAML config file')
+    parser.add_argument('-p', '--plot', dest='plot', action='store_true', default=False, help='')
     args = parser.parse_args()
 
     # ---- YAML Config ---- #
@@ -52,6 +53,8 @@ def main():
 
     # ---- Dataset ---- #
     dataset = ImagePairDataset(config['dataset'])  
+    # TODO: Add these parameters to config file
+    dataloader = DataLoader(dataset, batch_size=1, shuffle=True, num_workers=4)
 
     # ---- Device ---- #
     use_cuda = torch.cuda.is_available()
@@ -64,6 +67,9 @@ def main():
         use_relu=args.use_relu,
         use_cuda=use_cuda
     )
+
+    # ---- Feature ---- #
+    # TODO: MOVE THE FEATURE INSTANTIATION HERE******
 
     # ---- Matcher ---- #
     # Initialize matcher
@@ -81,85 +87,88 @@ def main():
     }
 
     #------------------------------------------------------
-    # TODO: INSERT LOOP HERE
+    # Load Images
+    for idx, img_pair in tqdm(enumerate(dataloader), total=len(dataloader)):
 
-    # Load Image
-    img_pair = dataset[0] # keys: 'image', 'valid_mask', 'is_optical', 'name'
+    # Use When Debugging: 
+    #for idx in np.arange(2): 
+    #    img_pair = dataset[idx] # keys: 'image', 'valid_mask', 'is_optical', 'name'
+    # -------- End Debug
 
-    # ---- Preprocessing PART 1 ---- #
-    # Convert Image from [1,H,W], Range 0-1, Float Tensor to (H,W,3), 0-255, UINT8 np.ndarray
-    img_optical = preprocess_multipoint(img_pair['optical']['image'])
-    img_thermal = preprocess_multipoint(img_pair['thermal']['image'])
+        # ---- Preprocessing PART 1 ---- #
+        # Convert Image from [1,H,W], Range 0-1, Float Tensor to (H,W,3), 0-255, UINT8 np.ndarray
+        img_optical = preprocess_multipoint(img_pair['optical']['image'])
+        img_thermal = preprocess_multipoint(img_pair['thermal']['image'])
 
-    # ---- Detect & Describe ---- #
-    if config['feature_type'] == 'd2-net':
-        # D2-Net
-        kp_optical, des_optical =  d2_net_detect_describe(args, img_optical, model, device)
-        kp_thermal, des_thermal =  d2_net_detect_describe(args, img_thermal, model, device)
+        # ---- Detect & Describe ---- #
+        if config['feature_type'] == 'd2-net':
+            # D2-Net
+            kp_optical, des_optical =  d2_net_detect_describe(args, img_optical, model, device)
+            kp_thermal, des_thermal =  d2_net_detect_describe(args, img_thermal, model, device)
 
-    elif config['feature_type'] == 'sift':
-        # SIFT
-        feature = cv2.SIFT_create(nfeatures = 500)
-        kp_optical, des_optical = feature.detectAndCompute(img_optical, None)
-        kp_thermal, des_thermal = feature.detectAndCompute(img_thermal, None)
-    
-    else: 
-        raise ValueError('Unsupported feature type. Supported options are d2-net and sift.')
+        elif config['feature_type'] == 'sift':
+            # SIFT
+            # TODO: move the feature instantiation before the loop
+            # TODO: Have 'nfeatures' as a kwargs parameter?
+            feature = cv2.SIFT_create(nfeatures = 500)
+            kp_optical, des_optical = feature.detectAndCompute(img_optical, None)
+            kp_thermal, des_thermal = feature.detectAndCompute(img_thermal, None)
         
-    # Mask keypoints & descriptors to valid regions
-    kp_optical, des_optical = mask_keypoints(kp_optical, des_optical, img_pair['optical']['valid_mask'])
-    kp_thermal, des_thermal = mask_keypoints(kp_thermal, des_thermal, img_pair['thermal']['valid_mask'])
+        else: 
+            raise ValueError('Unsupported feature type. Supported options are d2-net and sift.')
+            
+        # Mask keypoints & descriptors to valid regions
+        kp_optical, des_optical = mask_keypoints(kp_optical, des_optical, img_pair['optical']['valid_mask'])
+        kp_thermal, des_thermal = mask_keypoints(kp_thermal, des_thermal, img_pair['thermal']['valid_mask'])
 
-    # ---- Match ---- #
-    # Get top two closest matches w/ bf matcher
-    knn_matches = matcher.knnMatch(des_optical, des_thermal, k=2)
-    # Ratio Test
-    matches = []
-    for first, second in knn_matches: 
-        if first.distance < config['matching']['ratio']*second.distance: matches.append(first)
+        # ---- Match ---- #
+        # Get top two closest matches w/ bf matcher
+        knn_matches = matcher.knnMatch(des_optical, des_thermal, k=2)
 
-    # ---- Outlier Rejection ---- #
-    # Order points
-    kp_optical_pts = np.float32([kp_optical[m.queryIdx].pt for m in matches]).reshape(-1,1,2)
-    kp_thermal_pts = np.float32([kp_thermal[m.trainIdx].pt for m in matches]).reshape(-1,1,2)
-    # Apply ransac w/ homography model
-    __, ransac_mask = cv2.findHomography(kp_optical_pts, kp_thermal_pts, method=cv2.RANSAC) 
-    # Keep only the inliers
-    matches = tuple(matches[i] for i in ransac_mask[:,0].nonzero()[0]) 
+        # Ratio Test
+        matches = []
+        for first, second in knn_matches: 
+            if first.distance < config['matching']['ratio']*second.distance: matches.append(first)
 
-    # ---- Compute Repeatability ---- #
-    # TODO implement
-    '''
-    repeatability, repeated_points, total_points = compute_repeatability(kp_optical, img_pair['optical']['homography'], kp_thermal, img_pair['thermal']['homography'], threshold = config['repeatability']['threshold'])
-    '''
-    # TODO add to total stats
+        # ---- Outlier Rejection ---- #
+        # Order points
+        kp_optical_pts = np.float32([kp_optical[m.queryIdx].pt for m in matches]).reshape(-1,1,2)
+        kp_thermal_pts = np.float32([kp_thermal[m.trainIdx].pt for m in matches]).reshape(-1,1,2)
+        # Apply ransac w/ homography model
+        __, ransac_mask = cv2.findHomography(kp_optical_pts, kp_thermal_pts, method=cv2.RANSAC) 
+        # Keep only the inliers
+        matches = tuple(matches[i] for i in ransac_mask[:,0].nonzero()[0]) 
 
-    # ---- Compute MMA ---- #
-    # TODO implement
-    '''
-    mma, correct_matches, total_matches = compute_correct_matches(kp_optical, img_pair['optical']['homography'], kp_thermal, img_pair['thermal']['homography'], matches, threshold = config['matching']['threshold'])
-    '''
-    # TODO add to total stats
+        # ---- Compute Repeatability ---- #
+        # TODO implement
+        #repeatability, repeated_points, total_points = compute_repeatability(kp_optical, img_pair['optical']['homography'], kp_thermal, img_pair['thermal']['homography'], threshold = config['repeatability']['threshold'])
+        # TODO add to total stats
 
-    #------------------------------------------------------
+        # ---- Compute MMA ---- #
+        # TODO implement
+        #mma, correct_matches, total_matches = compute_correct_matches(kp_optical, img_pair['optical']['homography'], kp_thermal, img_pair['thermal']['homography'], matches, threshold = config['matching']['threshold'])
+        # TODO add to total stats
 
-    # TODO: Compute average stats
+        #------------------------------------------------------
 
-
-    # TODO: Save results
+        # TODO: Compute average stats
 
 
-    # ---- Plot ---- #
-    # Draw Keypoints
-    im_show('Keypoints (Optical, Thermal)', np.hstack((cv2.drawKeypoints(img_optical, kp_optical, None), cv2.drawKeypoints(img_thermal, kp_thermal, None))))
+        # TODO: Save results
 
-    # Draw matches
-    im_show('Matches', cv2.drawMatches(img_optical, kp_optical, img_thermal, kp_thermal, matches, None, flags=cv2.DrawMatchesFlags_DEFAULT))
+
+        # ---- Plot ---- #
+        if args.plot:
+            # Draw Keypoints
+            im_show('Keypoints (Optical, Thermal)', np.hstack((cv2.drawKeypoints(img_optical, kp_optical, None), cv2.drawKeypoints(img_thermal, kp_thermal, None))))
+
+            # Draw matches
+            im_show('Matches', cv2.drawMatches(img_optical, kp_optical, img_thermal, kp_thermal, matches, None, flags=cv2.DrawMatchesFlags_DEFAULT))
 
 
     return
 
-# TODO: May need to update (technically should check all 4 pixels around non-integer keypoint value)
+# TODO: Could update to look at all 4 pixels around the keypoint. Right now just rounding to closest pixel
 def mask_keypoints(keypoints, descriptors, valid_mask_tensor):
     # Create a mask by checking if it's in the valid region
     kp_mask = [int(valid_mask_tensor.squeeze()[round(kp.pt[1]), round(kp.pt[0])].item()) for kp in keypoints]
@@ -237,9 +246,10 @@ def d2_net_detect_describe(args, image, model, device):
     # i, j -> u, v
     # Rearrange the columns from [a, b, c] to [b, a, c]
     # TODO: Figure out if you should remove this
-    #keypoints = keypoints[:, [1, 0, 2]]
+    #keypoints = keypoints[:, [1, 0, 2]] # Note, combined this step with converting to cv2 keypoints below
 
-    # TODO: Convert Keypoints to cv2 Keypoints
+    # Convert Keypoints to cv2 Keypoints
+    # TODO: add radius to config file
     RADIUS = 4
     cv_keypoints = [cv2.KeyPoint(point[1], point[0], RADIUS, response=scores[i]) for i,point in enumerate(keypoints)]
 

@@ -18,6 +18,9 @@ from lib.exceptions import NoGradientError, EmptyTensorError
 matplotlib.use('Agg')
 
 
+# New loss function 
+# Instead of using depth, instrinics, poses, and bboxs
+# Correspondences are found with homographies and masks
 def loss_function(
         model, batch, device, margin=1, safe_radius=4, scaling_steps=3, plot=False
 ):
@@ -31,6 +34,8 @@ def loss_function(
 
     n_valid_samples = 0
     for idx_in_batch in range(batch['image1'].size(0)):
+
+        '''
         # Annotations
         depth1 = batch['depth1'][idx_in_batch].to(device)  # [h1, w1]
         intrinsics1 = batch['intrinsics1'][idx_in_batch].to(device)  # [3, 3]
@@ -41,24 +46,71 @@ def loss_function(
         intrinsics2 = batch['intrinsics2'][idx_in_batch].to(device)
         pose2 = batch['pose2'][idx_in_batch].view(4, 4).to(device)
         bbox2 = batch['bbox2'][idx_in_batch].to(device)
+        '''
+
+        #-------------#
+        # Annotations #
+        #-------------#
+        # Homographies
+        if 'homography' in batch['optical'].keys(): 
+            homography1 = batch['optical']['homography'][idx_in_batch].squeeze().float().to(device)
+            homography2 = batch['thermal']['homography'][idx_in_batch].squeeze().float().to(device)
+        else:
+            homography1 = torch.tensor(np.eye(3)).view(3,3).float().to(device)
+            homography2 = torch.tensor(np.eye(3)).view(3,3).float().to(device)
+        # Masks
+        mask1 = batch['optical']['valid_mask'][idx_in_batch].float().squeeze().to(device)
+        mask2 = batch['thermal']['valid_mask'][idx_in_batch].float().squeeze().to(device)
+        #----------------
 
         # Network output
+        # dense_features1.shape = [512, 30, 40] = [N_channel, 240/8, 320/8]
         dense_features1 = output['dense_features1'][idx_in_batch]
+        # c = 512, h1 = 30, w1 = 40
         c, h1, w1 = dense_features1.size()
+        # output['scores1'][idx_in_batch].shape = [30, 40]
+        # scores1.shape = [1200] = [30 x 40] => flattened so we can mask it w/ 'ids'
         scores1 = output['scores1'][idx_in_batch].view(-1)
 
+        #------
+        # TODO: In a future iteration, could try masking here as well to ensure
+        # all invalid descriptors are excluded from the loss function. 
+        # (Since 'all descriptors' are used in the negative_distance)
+        # For now, I'm setting 'border_reflect' to false in the settings,
+        # which blacks out the invalid regions
+        #------
+
+        # dense_features2.shape = [512, 30, 40] = [N_channel, 240/8, 320/8]
         dense_features2 = output['dense_features2'][idx_in_batch]
+        # h2 = 30, w2 = 40
         _, h2, w2 = dense_features2.size()
+        # scores2.shape = [30, 40] =/= scores1.shape
         scores2 = output['scores2'][idx_in_batch]
 
+        # all_descriptors1.shape = [512, 1200] = [512, 30x40] (flattened so we can mask it w/ 'ids')
         all_descriptors1 = F.normalize(dense_features1.view(c, -1), dim=0)
+        # descriptors1.shape = [512, 1200] (flattened so we can mask it w/ 'ids')
         descriptors1 = all_descriptors1
 
+        # all_descriptors2.shape = [512, 1200] = [512, 30x40] (flattened so we can mask it w/ 'ids')
         all_descriptors2 = F.normalize(dense_features2.view(c, -1), dim=0)
 
         # Warp the positions from image 1 to image 2
+        # fmap_pos1.shape = [2, 1200] = [2, 30x40]
+        # fmap_pos1 = [ 0 0 0 ... 29 29] = Grid position of sized-down image (same size as descriptors)
+        #             [ 0 1 2 ... 38 39]
         fmap_pos1 = grid_positions(h1, w1, device)
+
+        # pos1.shape = [2, 1200] = [2, 30x40]
+        # pos1 = [ 3.5 3.5  ... 235.5 235.5] = Grid position (centers of tiles) of full-sized image
+        #        [ 3.5 11.5 ... 307.5 315.5]
         pos1 = upscale_positions(fmap_pos1, scaling_steps=scaling_steps)
+
+
+        #-----------------#
+        # Correspondences #
+        #-----------------#
+        '''
         try:
             pos1, pos2, ids = warp(
                 pos1,
@@ -67,6 +119,11 @@ def loss_function(
             )
         except EmptyTensorError:
             continue
+        '''
+        pos1, pos2, ids = warp(pos1, homography1, mask1, homography2, mask2)
+       #-----------------------
+
+        # Mask the (i) feature map positions (fmap_pos1) (ii) descriptors, (iii) scores
         fmap_pos1 = fmap_pos1[:, ids]
         descriptors1 = descriptors1[:, ids]
         scores1 = scores1[ids]
@@ -75,58 +132,43 @@ def loss_function(
         if ids.size(0) < 128:
             continue
 
-        # Descriptors at the corresponding positions
-        fmap_pos2 = torch.round(
-            downscale_positions(pos2, scaling_steps=scaling_steps)
-        ).long()
-        descriptors2 = F.normalize(
-            dense_features2[:, fmap_pos2[0, :], fmap_pos2[1, :]],
-            dim=0
-        )
-        positive_distance = 2 - 2 * (
-            descriptors1.t().unsqueeze(1) @ descriptors2.t().unsqueeze(2)
-        ).squeeze()
+        # Construct fmap_pos2, descriptors2, so order of corresponding points matches fmap_pos1, descriptors1
+        fmap_pos2 = torch.round(downscale_positions(pos2, scaling_steps=scaling_steps)).long()
+        descriptors2 = F.normalize(dense_features2[:, fmap_pos2[0, :], fmap_pos2[1, :]],dim=0)
 
+        # Positive Distance
+        positive_distance = 2 - 2 * (descriptors1.t().unsqueeze(1) @ descriptors2.t().unsqueeze(2)).squeeze()
+
+        # Negative Distance for image 2
         all_fmap_pos2 = grid_positions(h2, w2, device)
-        position_distance = torch.max(
-            torch.abs(
-                fmap_pos2.unsqueeze(2).float() -
-                all_fmap_pos2.unsqueeze(1)
-            ),
-            dim=0
-        )[0]
+
+        position_distance = torch.max( torch.abs(fmap_pos2.unsqueeze(2).float() - all_fmap_pos2.unsqueeze(1)), dim=0)[0]
+
         is_out_of_safe_radius = position_distance > safe_radius
+        
         distance_matrix = 2 - 2 * (descriptors1.t() @ all_descriptors2)
-        negative_distance2 = torch.min(
-            distance_matrix + (1 - is_out_of_safe_radius.float()) * 10.,
-            dim=1
-        )[0]
 
+        negative_distance2 = torch.min( distance_matrix + (1 - is_out_of_safe_radius.float()) * 10., dim=1)[0]
+
+        # Negative Distance for image 1
         all_fmap_pos1 = grid_positions(h1, w1, device)
-        position_distance = torch.max(
-            torch.abs(
-                fmap_pos1.unsqueeze(2).float() -
-                all_fmap_pos1.unsqueeze(1)
-            ),
-            dim=0
-        )[0]
+
+        position_distance = torch.max( torch.abs(fmap_pos1.unsqueeze(2).float() - all_fmap_pos1.unsqueeze(1)), dim=0)[0]
+
         is_out_of_safe_radius = position_distance > safe_radius
+
         distance_matrix = 2 - 2 * (descriptors2.t() @ all_descriptors1)
-        negative_distance1 = torch.min(
-            distance_matrix + (1 - is_out_of_safe_radius.float()) * 10.,
-            dim=1
-        )[0]
 
-        diff = positive_distance - torch.min(
-            negative_distance1, negative_distance2
-        )
+        negative_distance1 = torch.min(distance_matrix + (1 - is_out_of_safe_radius.float()) * 10., dim=1)[0]
 
+        # Final Loss function: Part 1
+        diff = positive_distance - torch.min( negative_distance1, negative_distance2 )
+
+        # Construct scores 2 (in order such that corresponding points line up with scores1)
         scores2 = scores2[fmap_pos2[0, :], fmap_pos2[1, :]]
 
-        loss = loss + (
-            torch.sum(scores1 * scores2 * F.relu(margin + diff)) /
-            torch.sum(scores1 * scores2)
-        )
+        # Final Loss function: Part 2
+        loss = loss + ( torch.sum(scores1 * scores2 * F.relu(margin + diff)) / torch.sum(scores1 * scores2) )
 
         has_grad = True
         n_valid_samples += 1
@@ -183,11 +225,79 @@ def loss_function(
     if not has_grad:
         raise NoGradientError
 
+    # Final Loss function part 3: averaging
     loss = loss / n_valid_samples
 
     return loss
 
+# Checks that each pixel in 8x8 tile around 'pos' elements are valid
+# Similar function to interpolated_depth
+def apply_mask(pos, mask):
+    # Set device
+    device = pos.device
 
+    # Get boundaries
+    h, w = mask.shape
+
+    # Search in an 8x8 grid about each position
+    # If even one pixel is invalid, the whole position is invalid
+    valid_points = [] # Boolean list to mask ids
+    for point in pos.T: 
+        # Start with true
+        valid = True
+
+        # Get point
+        i = round(point[0].item())
+        j = round(point[1].item())
+
+        # If not in-bounds, discard
+        if not ((i >= 4) and (i < (h-4)) and (j >= 4) and (j < (w-4))): valid *= False
+
+        # Check if *all* elements in 8x8 tile 'True' in valid mask
+        if not torch.all(mask[i-4:i+4,j-4:j+4]): valid *= False
+
+        # Append to points
+        valid_points.append(int(valid))
+
+    # Take the nonzero elements as the ids
+    ids = torch.nonzero( torch.tensor(valid_points))[:,0].to(device)
+
+    # Apply to pos
+    pos = pos[:,ids]
+
+    return pos, ids
+
+# Overwriting original warp function
+def warp(pos1, homography1, mask1, homography2, mask2):
+
+    device = pos1.device
+
+    # Get valid positions in image 1
+    pos1, ids = apply_mask(pos1, mask1)
+
+    #----- Warp -----#
+    # Get in homogeneous format
+    # Change from [2, H x W] to [3, H x W] & convert from x,y to u,v
+    pos1_aug = torch.vstack((pos1[1,:], pos1[0,:], torch.ones((pos1.shape[1]))))
+    # Apply homographies to warp pos1 to image 2
+    homography = torch.mm(homography2, torch.inverse(homography1))
+    pos2_aug   = torch.mm(homography, pos1_aug)
+    # Remove from homogeneous format (divide through by last element)
+    # Change from [3, H x W] to [2, H x W], convert back to x,y from u,v
+    pos2 = torch.vstack((pos2_aug[1],pos2_aug[0])) / pos2_aug[2]
+
+    # Get valid positions in image 2
+    pos2, new_ids = apply_mask(pos2, mask2)
+
+    # Update the valid positions in image 1
+    ids = ids[new_ids]
+    pos1 = pos1[:, new_ids]
+
+    return pos1, pos2, ids
+
+#------------------------#
+# OLD FUNCTIONS NOT USED # 
+#------------------------#
 def interpolate_depth(pos, depth):
     device = pos.device
 
@@ -285,56 +395,5 @@ def interpolate_depth(pos, depth):
 
     return [interpolated_depth, pos, ids]
 
-
 def uv_to_pos(uv):
     return torch.cat([uv[1, :].view(1, -1), uv[0, :].view(1, -1)], dim=0)
-
-
-def warp(
-        pos1,
-        depth1, intrinsics1, pose1, bbox1,
-        depth2, intrinsics2, pose2, bbox2
-):
-    device = pos1.device
-
-    Z1, pos1, ids = interpolate_depth(pos1, depth1)
-
-    # COLMAP convention
-    u1 = pos1[1, :] + bbox1[1] + .5
-    v1 = pos1[0, :] + bbox1[0] + .5
-
-    X1 = (u1 - intrinsics1[0, 2]) * (Z1 / intrinsics1[0, 0])
-    Y1 = (v1 - intrinsics1[1, 2]) * (Z1 / intrinsics1[1, 1])
-
-    XYZ1_hom = torch.cat([
-        X1.view(1, -1),
-        Y1.view(1, -1),
-        Z1.view(1, -1),
-        torch.ones(1, Z1.size(0), device=device)
-    ], dim=0)
-    XYZ2_hom = torch.chain_matmul(pose2, torch.inverse(pose1), XYZ1_hom)
-    XYZ2 = XYZ2_hom[: -1, :] / XYZ2_hom[-1, :].view(1, -1)
-
-    uv2_hom = torch.matmul(intrinsics2, XYZ2)
-    uv2 = uv2_hom[: -1, :] / uv2_hom[-1, :].view(1, -1)
-
-    u2 = uv2[0, :] - bbox2[1] - .5
-    v2 = uv2[1, :] - bbox2[0] - .5
-    uv2 = torch.cat([u2.view(1, -1),  v2.view(1, -1)], dim=0)
-
-    annotated_depth, pos2, new_ids = interpolate_depth(uv_to_pos(uv2), depth2)
-
-    ids = ids[new_ids]
-    pos1 = pos1[:, new_ids]
-    estimated_depth = XYZ2[2, new_ids]
-
-    inlier_mask = torch.abs(estimated_depth - annotated_depth) < 0.05
-
-    ids = ids[inlier_mask]
-    if ids.size(0) == 0:
-        raise EmptyTensorError
-
-    pos2 = pos2[:, inlier_mask]
-    pos1 = pos1[:, inlier_mask]
-
-    return pos1, pos2, ids
