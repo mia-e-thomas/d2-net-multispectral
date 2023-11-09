@@ -278,7 +278,7 @@ def warp(pos1, homography1, mask1, homography2, mask2):
     #----- Warp -----#
     # Get in homogeneous format
     # Change from [2, H x W] to [3, H x W] & convert from x,y to u,v
-    pos1_aug = torch.vstack((pos1[1,:], pos1[0,:], torch.ones((pos1.shape[1]))))
+    pos1_aug = torch.vstack((pos1[1,:], pos1[0,:], torch.ones((pos1.shape[1]), device=device)))
     # Apply homographies to warp pos1 to image 2
     homography = torch.mm(homography2, torch.inverse(homography1))
     pos2_aug   = torch.mm(homography, pos1_aug)

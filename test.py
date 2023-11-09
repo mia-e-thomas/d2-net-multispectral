@@ -59,6 +59,7 @@ def main():
     # ---- Device ---- #
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda:0" if use_cuda else "cpu")
+    print("Device: " + str(device))
 
     # ---- Model ---- #
     # Creating CNN model
