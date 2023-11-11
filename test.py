@@ -24,20 +24,22 @@ def main():
 
     # ---- Args ---- #
     parser = argparse.ArgumentParser(description='Project Test Script')
+    # Important & required 
+    parser.add_argument('-y', '--yaml-config', default='config/config_test_features.yaml', help='YAML config file')
+    parser.add_argument('-p', '--plot', dest='plot', action='store_true', default=False, help='')
     # D2-Net 
     parser.add_argument('--model_file', type=str, default='models/d2_tf.pth', help='path to the full model')
-    parser.add_argument('--multiscale', dest='multiscale', action='store_true', default=False, help='extract multiscale features')
+    parser.add_argument('--preprocessing', type=str, default='torch', help='image preprocessing \'torch\' or None')
     parser.add_argument('--no-relu', dest='use_relu', default = True, action='store_false', help='remove ReLU after the dense feature extraction module') # Calling flag will store false
-    parser.add_argument('--preprocessing', type=str, default='torch', help='image preprocessing (caffe or torch)')
+    parser.add_argument('--multiscale', dest='multiscale', action='store_true', default=False, help='extract multiscale features')
+    # D2-net ones (that I won't need to change)
     parser.add_argument('--max_edge', type=int, default=1600, help='maximum image size at network input')
     parser.add_argument('--max_sum_edges', type=int, default=2800, help='maximum sum of image sizes at network input')
     # Output
-    parser.add_argument('--output_extension', type=str, default='.d2-net', help='extension for the output')
-    parser.add_argument('--output_type', type=str, default='npz', help='output file type (npz or mat)')
-    # Added
+    #parser.add_argument('--output_extension', type=str, default='.d2-net', help='extension for the output')
+    #parser.add_argument('--output_type', type=str, default='npz', help='output file type (npz or mat)')
+    # Other
     parser.add_argument('-s', '--seed', default=0, type=int, help='Seed of the random generators')
-    parser.add_argument('-y', '--yaml-config', default='config/config_test_features.yaml', help='YAML config file')
-    parser.add_argument('-p', '--plot', dest='plot', action='store_true', default=False, help='')
     args = parser.parse_args()
 
     # ---- YAML Config ---- #
@@ -73,13 +75,15 @@ def main():
     # TODO: MOVE THE FEATURE INSTANTIATION HERE******
 
     # ---- Matcher ---- #
+    # TODO: change this to a class??
     # Initialize matcher
     matcher = cv2.BFMatcher()
 
     # ---- Init Results ---- #
     results = {
         'repeated_points': 0,
-        'total_points': 0,
+        'total_optical': 0,
+        'total_thermal': 0,
         'repeatability': 0,
         'correct_matches': 0,
         'total_matches': 0,
@@ -91,7 +95,7 @@ def main():
     # Load Images
     for idx, img_pair in tqdm(enumerate(dataloader), total=len(dataloader)):
 
-    # Use When Debugging: 
+    # ---- Use When Debugging: 
     #for idx in np.arange(2): 
     #    img_pair = dataset[idx] # keys: 'image', 'valid_mask', 'is_optical', 'name'
     # -------- End Debug
@@ -102,12 +106,12 @@ def main():
         img_thermal = preprocess_multipoint(img_pair['thermal']['image'])
 
         # ---- Detect & Describe ---- #
-        if config['feature_type'] == 'd2-net':
+        if config['feature']['type'] == 'd2-net':
             # D2-Net
             kp_optical, des_optical =  d2_net_detect_describe(args, img_optical, model, device)
             kp_thermal, des_thermal =  d2_net_detect_describe(args, img_thermal, model, device)
 
-        elif config['feature_type'] == 'sift':
+        elif config['feature']['type'] == 'sift':
             # SIFT
             # TODO: move the feature instantiation before the loop
             # TODO: Have 'nfeatures' as a kwargs parameter?
@@ -142,12 +146,12 @@ def main():
 
         # ---- Compute Repeatability ---- #
         # TODO implement
-        #repeatability, repeated_points, total_points = compute_repeatability(kp_optical, img_pair['optical']['homography'], kp_thermal, img_pair['thermal']['homography'], threshold = config['repeatability']['threshold'])
+        repeatability, points_repeated, points_optical, points_thermal = compute_repeatability(kp_optical, img_pair['optical']['homography'], kp_thermal, img_pair['thermal']['homography'], threshold = config['eval']['repeat_thresh'])
         # TODO add to total stats
 
         # ---- Compute MMA ---- #
         # TODO implement
-        #mma, correct_matches, total_matches = compute_correct_matches(kp_optical, img_pair['optical']['homography'], kp_thermal, img_pair['thermal']['homography'], matches, threshold = config['matching']['threshold'])
+        mma, m_correct, m_total = compute_correct_matches(kp_optical, img_pair['optical']['homography'], kp_thermal, img_pair['thermal']['homography'], matches, threshold = config['eval']['match_thresh'])
         # TODO add to total stats
 
         #------------------------------------------------------
@@ -168,6 +172,101 @@ def main():
 
 
     return
+
+def compute_correct_matches(kp_source, H_source, kp_dest, H_dest, matches, threshold):
+    # Order keypoints based on matches
+    kp_s_ordered = [kp_source[m.queryIdx] for m in matches]
+    kp_d_ordered = [kp_dest[m.trainIdx]   for m in matches]
+
+    # Convert cv2 Keypoints (u,v format) to [N,2] (x,y) format
+    kp_s = cv2_to_xy(kp_s_ordered)
+    kp_d = cv2_to_xy(kp_d_ordered)
+    
+    # Rectify keypoints
+    kp_s_rect = warp_xy_to_xy(kp_s, np.linalg.inv(H_source))
+    kp_d_rect = warp_xy_to_xy(kp_d, np.linalg.inv(H_dest))
+
+    # Get # of correct matches
+    m_correct = get_correct_matches(kp_s_rect, kp_d_rect, threshold)
+
+    # Finalize & return
+    m_total = len(matches)
+    mma = m_correct / m_total
+
+    return mma, m_correct, m_total
+
+# Takes in keypoints of form [M,2], (x,y) format, (M = # matches)
+# Outputs the number of matches that are correct
+# Assumes they are already rectified & ordered
+def get_correct_matches(kp_s_rect, kp_d_rect, threshold):
+
+    # Get distances between each matc
+    distances = np.linalg.norm(kp_s_rect - kp_d_rect, axis=1)  
+
+    # Determine how many are within threshold
+    m_correct = np.sum(distances < threshold).astype(int)
+
+    return m_correct
+
+# Takes in cv2 Keypoints of form (u,v)
+# Output: Total # of repeated keypoints across *both* images
+# (need to divide by 2 to get average number)
+def compute_repeatability(kp1, H1, kp2, H2, threshold):
+    # Convert cv2 Keypoints (u,v format) to [N,2] (x,y) format
+    kp1 = cv2_to_xy(kp1)
+    kp2 = cv2_to_xy(kp2)
+    
+    # Rectify keypoints
+    kp1_rect = warp_xy_to_xy(kp1, np.linalg.inv(H1))
+    kp2_rect = warp_xy_to_xy(kp2, np.linalg.inv(H2))
+
+    # Get repeated points for each
+    # kp1_rep and kp2_rep are not necessarily the same. 
+    kp1_rep, kp2_rep = get_repeated_points(kp1_rect, kp2_rect, threshold)
+
+    # Finalize & return
+    kp1_tot = kp1.shape[0]
+    kp2_tot = kp2.shape[0]
+    repeatability = (kp1_rep + kp2_rep)/(kp1_tot + kp2_tot)
+
+    return repeatability, (kp1_rep+kp2_rep), kp1_tot, kp2_tot
+
+# Assumes rectified images (or at least warped by same homography)
+def get_repeated_points(kp1, kp2, threshold):
+
+    # distances.shape = [len(kp1), len(kp2)]
+    distances = np.linalg.norm(kp1[:,np.newaxis,:] - kp2, axis=2)
+
+    # For *each* keypoint in kp1 and kp2, get distance to *closest* point 
+    kp1_dist = np.min(distances, axis=1)
+    kp2_dist = np.min(distances, axis=0)
+
+    # Get number of points where closest point under threshold
+    kp1_rep = np.sum(kp1_dist < threshold).astype(int)
+    kp2_rep = np.sum(kp2_dist < threshold).astype(int)
+
+    return kp1_rep, kp2_rep
+
+# Input:  [N,2] array of keypoints (x,y form)
+# Output: [N,2] array of keypoints (x,y form)
+def warp_xy_to_xy(kp, H):
+    # Convert to homogenous format: [3,N], (u,v) format
+    kp_aug = np.vstack((kp[:,1], kp[:,0], torch.ones((kp.shape[0]))))
+
+    # Apply homography
+    kp_warped_aug = H @ kp_aug
+
+    # Reproject (divide by last element), convert back to (x,y) from (u,v)
+    # Output shape: [N,2]
+    kp_warped = (np.vstack((kp_warped_aug[1,:], kp_warped_aug[0,:])) / kp_warped_aug[2,:]).T
+
+    return kp_warped
+
+# Input: list of cv2.KeyPoints (already in u,v format)
+# Output: [N,2] array of keypoints (x,y format)
+def cv2_to_xy(kp_list):
+    kp_xy = np.float32([[kp.pt[1], kp.pt[0]] for kp in kp_list]).reshape(-1,2)
+    return kp_xy
 
 # TODO: Could update to look at all 4 pixels around the keypoint. Right now just rounding to closest pixel
 def mask_keypoints(keypoints, descriptors, valid_mask_tensor):

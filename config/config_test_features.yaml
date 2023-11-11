@@ -27,11 +27,14 @@ dataset:
             valid_border_margin: 0
             mask_border: True
 
-feature_type: 'd2-net' # 'd2-net' or 'sift'
-
-repeatability: 
-    threshold: 4
+feature:
+    type: 'sift' # 'd2-net' or 'sift'
 
 matching: 
+    refinement_method: 'ratio' # Ratio or cross-check # TODO: implement
     ratio: 0.9 # Ratio test ratio
-    threshold: 4  # Distance below which two points are considered a match
+    
+
+eval: 
+    repeat_thresh: 4
+    match_thresh: 4  # Distance below which two points are considered a match
