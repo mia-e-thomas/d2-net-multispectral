@@ -19,6 +19,8 @@ import matplotlib.pyplot as plt
 import random
 import yaml
 from torch.utils.data import DataLoader
+import os
+import datetime
 
 def main():
 
@@ -35,9 +37,6 @@ def main():
     # D2-net ones (that I won't need to change)
     parser.add_argument('--max_edge', type=int, default=1600, help='maximum image size at network input')
     parser.add_argument('--max_sum_edges', type=int, default=2800, help='maximum sum of image sizes at network input')
-    # Output
-    #parser.add_argument('--output_extension', type=str, default='.d2-net', help='extension for the output')
-    #parser.add_argument('--output_type', type=str, default='npz', help='output file type (npz or mat)')
     # Other
     parser.add_argument('-s', '--seed', default=0, type=int, help='Seed of the random generators')
     args = parser.parse_args()
@@ -75,19 +74,16 @@ def main():
     # TODO: MOVE THE FEATURE INSTANTIATION HERE******
 
     # ---- Matcher ---- #
-    # TODO: change this to a class??
     # Initialize matcher
-    matcher = cv2.BFMatcher()
+    matcher = Matcher(config['matching'])
 
     # ---- Init Results ---- #
     results = {
-        'repeated_points': 0,
-        'total_optical': 0,
-        'total_thermal': 0,
-        'repeatability': 0,
-        'correct_matches': 0,
-        'total_matches': 0,
-        'matching_accuracy': 0,
+        'points_repeated': 0,
+        'points_optical': 0,
+        'points_thermal': 0,
+        'matches_correct': 0,
+        'matches_total': 0,
         'iterations': 0,
     }
 
@@ -118,52 +114,43 @@ def main():
             feature = cv2.SIFT_create(nfeatures = 500)
             kp_optical, des_optical = feature.detectAndCompute(img_optical, None)
             kp_thermal, des_thermal = feature.detectAndCompute(img_thermal, None)
-        
         else: 
             raise ValueError('Unsupported feature type. Supported options are d2-net and sift.')
             
-        # Mask keypoints & descriptors to valid regions
+        # ---- Mask ---- #
         kp_optical, des_optical = mask_keypoints(kp_optical, des_optical, img_pair['optical']['valid_mask'])
         kp_thermal, des_thermal = mask_keypoints(kp_thermal, des_thermal, img_pair['thermal']['valid_mask'])
 
         # ---- Match ---- #
-        # Get top two closest matches w/ bf matcher
-        knn_matches = matcher.knnMatch(des_optical, des_thermal, k=2)
-
-        # Ratio Test
-        matches = []
-        for first, second in knn_matches: 
-            if first.distance < config['matching']['ratio']*second.distance: matches.append(first)
+        matches = matcher.match(des_optical, des_thermal)
 
         # ---- Outlier Rejection ---- #
-        # Order points
-        kp_optical_pts = np.float32([kp_optical[m.queryIdx].pt for m in matches]).reshape(-1,1,2)
-        kp_thermal_pts = np.float32([kp_thermal[m.trainIdx].pt for m in matches]).reshape(-1,1,2)
-        # Apply ransac w/ homography model
-        __, ransac_mask = cv2.findHomography(kp_optical_pts, kp_thermal_pts, method=cv2.RANSAC) 
-        # Keep only the inliers
-        matches = tuple(matches[i] for i in ransac_mask[:,0].nonzero()[0]) 
+        if config['matching']['ransac']:
+            matches = ransac(kp_optical, kp_thermal, matches)
 
         # ---- Compute Repeatability ---- #
-        # TODO implement
+        # Compute
         repeatability, points_repeated, points_optical, points_thermal = compute_repeatability(kp_optical, img_pair['optical']['homography'], kp_thermal, img_pair['thermal']['homography'], threshold = config['eval']['repeat_thresh'])
-        # TODO add to total stats
+
+        # Add to total stats
+        results['points_repeated'] += points_repeated
+        results['points_optical']  += points_optical
+        results['points_thermal']  += points_thermal
+
 
         # ---- Compute MMA ---- #
-        # TODO implement
-        mma, m_correct, m_total = compute_correct_matches(kp_optical, img_pair['optical']['homography'], kp_thermal, img_pair['thermal']['homography'], matches, threshold = config['eval']['match_thresh'])
-        # TODO add to total stats
+        # Compute
+        mma, m_correct, m_total = compute_mma(kp_optical, img_pair['optical']['homography'], kp_thermal, img_pair['thermal']['homography'], matches, threshold = config['eval']['match_thresh'])
+        # Add to total stats
+        results['matches_correct'] += m_correct
+        results['matches_total']   += m_total
+        results['iterations'] += 1
 
         #------------------------------------------------------
 
-        # TODO: Compute average stats
-
-
-        # TODO: Save results
-
-
         # ---- Plot ---- #
-        if args.plot:
+        if args.plot and (len(kp_optical)>0) and (len(kp_thermal)>0):
+
             # Draw Keypoints
             im_show('Keypoints (Optical, Thermal)', np.hstack((cv2.drawKeypoints(img_optical, kp_optical, None), cv2.drawKeypoints(img_thermal, kp_thermal, None))))
 
@@ -171,9 +158,121 @@ def main():
             im_show('Matches', cv2.drawMatches(img_optical, kp_optical, img_thermal, kp_thermal, matches, None, flags=cv2.DrawMatchesFlags_DEFAULT))
 
 
+    # ---- Average Stats ---- #
+    # Compute totall mma and repeatability
+    results['repeatability'] = float(results['points_repeated']/(results['points_optical'] + results['points_thermal']))
+    results['mma'] = float(results['matches_correct'] / results['matches_total'])
+    # Average rest of stats
+    results['avg_points_repeated']= float(results['points_repeated'] / results['iterations'])
+    results['avg_points_optical'] = float(results['points_optical']  / results['iterations'])
+    results['avg_points_thermal'] = float(results['points_thermal']  / results['iterations'])
+    results['avg_matches_correct']= float(results['matches_correct'] / results['iterations'])
+    results['avg_matches_total']  = float(results['matches_total']   / results['iterations'])
+    # Nicely format
+    results['points_repeated'] = int(results['points_repeated'])
+    results['points_optical']  = int(results['points_optical']) 
+    results['points_thermal']  = int(results['points_thermal']) 
+    results['matches_correct'] = int(results['matches_correct']) 
+    results['matches_total']   = int(results['matches_total']) 
+
+    # ---- Save Results ---- #
+    # Make directory
+    results_folder = os.path.join(
+        os.getcwd(), 
+        config['saving']['results_folder'], 
+        "results-{date:%Y-%m-%d-%H-%M-%S}".format(date=datetime.datetime.now()) ) 
+    os.mkdir(results_folder)
+
+    # Dump config, command line args, results
+    with open(os.path.join(results_folder, 'params.yaml'), 'wt') as fh:
+        yaml.dump({'args': args}, fh)
+        yaml.dump({'yaml-config':config}, fh)
+
+    with open(os.path.join(results_folder, 'results.yaml'), 'wt') as fh:
+        yaml.dump(results, fh)
+
     return
 
-def compute_correct_matches(kp_source, H_source, kp_dest, H_dest, matches, threshold):
+class Matcher():
+    def __init__(self, config):
+
+        # Get parameters
+        self.method = config['method']
+
+        # Intiialize matcher
+        # Option 1: Ratio Test
+        if self.method == 'ratio':
+            # Get Ratio
+            try: 
+                self.ratio = config['ratio']
+            except: 
+                raise ValueError('Ratio must be specified to use ratio method')
+            
+            # Initialize matcher
+            self.matcher = cv2.BFMatcher(cv2.NORM_L2)
+
+        # Option 2: Crosscheck
+        elif self.method=='crosscheck': 
+
+            # Initialize matcher
+            self.matcher = cv2.BFMatcher(cv2.NORM_L2, crossCheck=True)
+
+        else:
+            raise ValueError('Unknown method. Only ratio and crosscheck accepted.')
+
+    def match(self, des1, des2):
+
+        # Handle one or both descriptors empty
+        if (len(des1)==0) or (len(des2)==0): return []
+
+        if self.method=='ratio': 
+            knn_matches = self.matcher.knnMatch(des1, des2, k=2)
+            # Ratio Test
+            matches = []
+            for first, second in knn_matches: 
+                if first.distance < self.ratio*second.distance: matches.append(first)
+
+        elif self.method=='crosscheck': 
+            matches = self.matcher.match(des1, des2)
+            
+        else: 
+            raise ValueError('Unknown method. Only ratio and crosscheck accepted.')
+
+        return matches
+
+# Input: cv2.KeyPoints (u,v) format, matches
+# Output: Inlier matches
+def ransac(kp1, kp2, matches):
+
+    # CASE 1: Insufficient matches (or no matches)
+    if len(matches) < 4: return matches
+
+    # CASE 2: Enough matches
+    # Order points
+    kp1_pts = np.float32([kp1[m.queryIdx].pt for m in matches]).reshape(-1,1,2)
+    kp2_pts = np.float32([kp2[m.trainIdx].pt for m in matches]).reshape(-1,1,2)
+
+    # Apply ransac w/ homography model
+    H, ransac_mask = cv2.findHomography(kp1_pts, kp2_pts, method=cv2.RANSAC) 
+
+    # CASE 3: Ransac failed
+    if H is None:
+        return matches
+
+    # Keep only the inliers
+    inlier_matches = tuple(matches[i] for i in ransac_mask[:,0].nonzero()[0]) 
+
+    return inlier_matches
+
+# Takes in cv2.KeyPoints (u,v format), the homographies, matches, and threshold
+# Outputs mma (correct/total), # correct, and total # of matches
+def compute_mma(kp_source, H_source, kp_dest, H_dest, matches, threshold):
+
+    # ERROR CASE: (i) One of the keypoints is empty
+    if (len(kp_source)==0) or (len(kp_dest)==0): return 0.0, 0, 0
+    # ERROR CASE: (ii) Matches empty
+    if (len(matches) == 0): return 0.0, 0, 0
+
     # Order keypoints based on matches
     kp_s_ordered = [kp_source[m.queryIdx] for m in matches]
     kp_d_ordered = [kp_dest[m.trainIdx]   for m in matches]
@@ -212,6 +311,9 @@ def get_correct_matches(kp_s_rect, kp_d_rect, threshold):
 # Output: Total # of repeated keypoints across *both* images
 # (need to divide by 2 to get average number)
 def compute_repeatability(kp1, H1, kp2, H2, threshold):
+    # CASE: One of keypoints is empty
+    if (len(kp1)==0) or (len(kp2)==0): return 0.0, 0, len(kp1), len(kp2)
+
     # Convert cv2 Keypoints (u,v format) to [N,2] (x,y) format
     kp1 = cv2_to_xy(kp1)
     kp2 = cv2_to_xy(kp2)
@@ -250,10 +352,12 @@ def get_repeated_points(kp1, kp2, threshold):
 # Input:  [N,2] array of keypoints (x,y form)
 # Output: [N,2] array of keypoints (x,y form)
 def warp_xy_to_xy(kp, H):
+
     # Convert to homogenous format: [3,N], (u,v) format
     kp_aug = np.vstack((kp[:,1], kp[:,0], torch.ones((kp.shape[0]))))
 
     # Apply homography
+    if len(H.shape) == 3: H = H.squeeze()
     kp_warped_aug = H @ kp_aug
 
     # Reproject (divide by last element), convert back to (x,y) from (u,v)
@@ -270,6 +374,10 @@ def cv2_to_xy(kp_list):
 
 # TODO: Could update to look at all 4 pixels around the keypoint. Right now just rounding to closest pixel
 def mask_keypoints(keypoints, descriptors, valid_mask_tensor):
+
+    # Handle no keypoints or descriptors
+    if (len(keypoints)==0) or (len(descriptors)==0): return [], []
+
     # Create a mask by checking if it's in the valid region
     kp_mask = [int(valid_mask_tensor.squeeze()[round(kp.pt[1]), round(kp.pt[0])].item()) for kp in keypoints]
 

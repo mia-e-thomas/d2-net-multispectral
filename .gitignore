@@ -15,3 +15,4 @@ vlfeat
 *.d2-net
 multipoint_data
 og/
+results/

@@ -23,18 +23,21 @@ dataset:
                 max_angle: 1.57  # 3.14
                 allow_artifacts: true
                 translation_overflow: 0.05
-            border_reflect: False
+            border_reflect: True
             valid_border_margin: 0
             mask_border: True
 
 feature:
-    type: 'sift' # 'd2-net' or 'sift'
+    type: 'sift' # 'd2-net', 'sift', or 'orb'
 
 matching: 
-    refinement_method: 'ratio' # Ratio or cross-check # TODO: implement
-    ratio: 0.9 # Ratio test ratio
+    method: 'ratio' # 'ratio' or 'crosscheck'
+    ratio: 0.9 # for ratio test (if used)
+    ransac: True # boolean
     
-
 eval: 
     repeat_thresh: 4
     match_thresh: 4  # Distance below which two points are considered a match
+
+saving:
+    results_folder: ./results/
