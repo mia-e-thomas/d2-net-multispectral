@@ -84,8 +84,9 @@ def process_multiscale(image, model, scales=[.5, 1, 2]):
             )
         except EmptyTensorError:
             continue
-        fmap_pos = fmap_pos[:, ids]
-        fmap_keypoints = fmap_keypoints[:, ids]
+        # NOTE: added the .cpu() to ids to avoid 'different devices' error
+        fmap_pos = fmap_pos[:, ids.cpu()] 
+        fmap_keypoints = fmap_keypoints[:, ids.cpu()]
         del ids
 
         keypoints = upscale_positions(fmap_keypoints, scaling_steps=2)

@@ -17,12 +17,14 @@ from lib.exceptions import NoGradientError, EmptyTensorError
 
 matplotlib.use('Agg')
 
+# added
+import os
 
 # New loss function 
 # Instead of using depth, instrinics, poses, and bboxs
 # Correspondences are found with homographies and masks
 def loss_function(
-        model, batch, device, margin=1, safe_radius=4, scaling_steps=3, plot=False
+        model, batch, device, margin=1, safe_radius=4, scaling_steps=3, plot=False, plot_path=None,
 ):
     output = model({
         'image1': batch['image1'].to(device),
@@ -168,7 +170,8 @@ def loss_function(
         scores2 = scores2[fmap_pos2[0, :], fmap_pos2[1, :]]
 
         # Final Loss function: Part 2
-        loss = loss + ( torch.sum(scores1 * scores2 * F.relu(margin + diff)) / torch.sum(scores1 * scores2) )
+        # Added 1e-5 to denominator to avoid NaN (recommended by author in github issues)
+        loss = loss + ( torch.sum(scores1 * scores2 * F.relu(margin + diff)) / (torch.sum(scores1 * scores2) + 1e-5))
 
         has_grad = True
         n_valid_samples += 1
@@ -180,6 +183,7 @@ def loss_function(
             col = np.random.rand(k, 3)
             n_sp = 4
             plt.figure()
+            # Image 1
             plt.subplot(1, n_sp, 1)
             im1 = imshow_image(
                 batch['image1'][idx_in_batch].cpu().numpy(),
@@ -191,12 +195,14 @@ def loss_function(
                 s=0.25**2, c=col, marker=',', alpha=0.5
             )
             plt.axis('off')
+            # Image 1 Scores
             plt.subplot(1, n_sp, 2)
             plt.imshow(
                 output['scores1'][idx_in_batch].data.cpu().numpy(),
                 cmap='Reds'
             )
             plt.axis('off')
+            # Image 2
             plt.subplot(1, n_sp, 3)
             im2 = imshow_image(
                 batch['image2'][idx_in_batch].cpu().numpy(),
@@ -208,21 +214,19 @@ def loss_function(
                 s=0.25**2, c=col, marker=',', alpha=0.5
             )
             plt.axis('off')
+            # Image 2 scores
             plt.subplot(1, n_sp, 4)
             plt.imshow(
                 output['scores2'][idx_in_batch].data.cpu().numpy(),
                 cmap='Reds'
             )
             plt.axis('off')
-            savefig('train_vis/%s.%02d.%02d.%d.png' % (
-                'train' if batch['train'] else 'valid',
-                batch['epoch_idx'],
-                batch['batch_idx'] // batch['log_interval'],
-                idx_in_batch
-            ), dpi=300)
+            fig_path = os.path.join(plot_path, '%s.%02d.%02d.%d.png' % ('train' if batch['train'] else 'valid', batch['epoch_idx'], batch['batch_idx'] // batch['log_interval'], idx_in_batch))
+            savefig(fig_path, dpi=300)
             plt.close()
 
     if not has_grad:
+        import ipdb; ipdb.set_trace()
         raise NoGradientError
 
     # Final Loss function part 3: averaging

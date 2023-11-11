@@ -1,7 +1,7 @@
 dataset:
     filename: multipoint_data/training.hdf5
     single_image: false
-    random_pairs: false # TODO: Consider changing this when tuning
+    random_pairs: true 
     height: 240
     width: 320
     augmentation:
@@ -34,5 +34,5 @@ dataset:
                 allow_artifacts: true
                 translation_overflow: 0.05
             valid_border_margin: 0
-            border_reflect: false # CHANGED (default true)
+            border_reflect: true 
 

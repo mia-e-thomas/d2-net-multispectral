@@ -33,5 +33,5 @@ repeatability:
     threshold: 4
 
 matching: 
-    ratio: 1 # Ratio test ratio
+    ratio: 0.9 # Ratio test ratio
     threshold: 4  # Distance below which two points are considered a match
