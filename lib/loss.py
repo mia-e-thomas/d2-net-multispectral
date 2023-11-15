@@ -126,6 +126,10 @@ def loss_function(
        #-----------------------
 
         # Mask the (i) feature map positions (fmap_pos1) (ii) descriptors, (iii) scores
+        # fmap_pos1.shape = [2, N]
+        # descriptors1.shape = [512, N]
+        # scores1.shape = [N]
+        # N = # valid correspondences
         fmap_pos1 = fmap_pos1[:, ids]
         descriptors1 = descriptors1[:, ids]
         scores1 = scores1[ids]
@@ -135,25 +139,53 @@ def loss_function(
             continue
 
         # Construct fmap_pos2, descriptors2, so order of corresponding points matches fmap_pos1, descriptors1
+        # fmap_pos2.shape = [2, N]
+        # descriptors2.shape = [512, N]
         fmap_pos2 = torch.round(downscale_positions(pos2, scaling_steps=scaling_steps)).long()
         descriptors2 = F.normalize(dense_features2[:, fmap_pos2[0, :], fmap_pos2[1, :]],dim=0)
 
-        # Positive Distance
+        #------- Positive Distance -------#
+        # positive_distance.shape = [N]
         positive_distance = 2 - 2 * (descriptors1.t().unsqueeze(1) @ descriptors2.t().unsqueeze(2)).squeeze()
 
-        # Negative Distance for image 2
+        #------- Negative Distance: Image 2 ------#
+        # all_fmap_pos2.shape = [2, HxW] = [2, 1200]
         all_fmap_pos2 = grid_positions(h2, w2, device)
 
+        #--- ADDED: ONLY include valid descriptors in triplet loss
+        # Get subset of 'all' positions that are valid
+        pos2_all_valid = upscale_positions(all_fmap_pos2, scaling_steps=scaling_steps)
+        pos2_all_valid, ids2_valid = apply_mask(pos2_all_valid, mask2)
+        # Mask fmap and descriptor
+        all_fmap_pos2 = torch.round(downscale_positions(pos2_all_valid, scaling_steps=scaling_steps)).long()
+        all_descriptors2 = all_descriptors2[:, ids2_valid]
+        #---
+
+        # position_distance.shape = [N, HxW] = [N, 1200]
+        # Distance between {descriptor2 with correspondence} and {all descriptor2}
+        # First gets both x & y distance, then takes the maximum
         position_distance = torch.max( torch.abs(fmap_pos2.unsqueeze(2).float() - all_fmap_pos2.unsqueeze(1)), dim=0)[0]
 
+        # If the *larger* position value is greater than the radius
+        # is_out_of_safe_radius.shape = [N,HxW]
         is_out_of_safe_radius = position_distance > safe_radius
         
+        # distance_matrix.shape = [N,HxW]
         distance_matrix = 2 - 2 * (descriptors1.t() @ all_descriptors2)
 
         negative_distance2 = torch.min( distance_matrix + (1 - is_out_of_safe_radius.float()) * 10., dim=1)[0]
 
-        # Negative Distance for image 1
+        #------- Negative Distance: Image 1 ------#
         all_fmap_pos1 = grid_positions(h1, w1, device)
+
+        #--- ADDED: ONLY include valid descriptors in triplet loss
+        # Get subset of 'all' positions that are valid
+        pos1_all_valid = upscale_positions(all_fmap_pos1, scaling_steps=scaling_steps)
+        pos1_all_valid, ids1_valid = apply_mask(pos1_all_valid, mask1)
+        # Mask fmap and descriptor
+        all_fmap_pos1 = torch.round(downscale_positions(pos1_all_valid, scaling_steps=scaling_steps)).long()
+        all_descriptors1 = all_descriptors1[:, ids1_valid]
+        #--- 
 
         position_distance = torch.max( torch.abs(fmap_pos1.unsqueeze(2).float() - all_fmap_pos1.unsqueeze(1)), dim=0)[0]
 
@@ -163,13 +195,14 @@ def loss_function(
 
         negative_distance1 = torch.min(distance_matrix + (1 - is_out_of_safe_radius.float()) * 10., dim=1)[0]
 
-        # Final Loss function: Part 1
+        #------- Construct loss ------#
+        # Part 1: diff
         diff = positive_distance - torch.min( negative_distance1, negative_distance2 )
 
         # Construct scores 2 (in order such that corresponding points line up with scores1)
         scores2 = scores2[fmap_pos2[0, :], fmap_pos2[1, :]]
 
-        # Final Loss function: Part 2
+        # Part 2: Loss for index
         # Added 1e-5 to denominator to avoid NaN (recommended by author in github issues)
         loss = loss + ( torch.sum(scores1 * scores2 * F.relu(margin + diff)) / (torch.sum(scores1 * scores2) + 1e-5))
 
@@ -190,7 +223,7 @@ def loss_function(
                 preprocessing=batch['preprocessing']
             )
             # Mask images before displaying
-            im1 *= batch['optical']['valid_mask']
+            im1 *= mask1[:,:,np.newaxis].cpu().numpy().astype(np.uint8)
             plt.imshow(im1)
             plt.scatter(
                 pos1_aux[1, :], pos1_aux[0, :],
@@ -211,7 +244,7 @@ def loss_function(
                 preprocessing=batch['preprocessing']
             )
             # Mask images before displaying
-            im2 *= batch['thermal']['valid_mask']
+            im2 *= mask2[:,:,np.newaxis].cpu().numpy().astype(np.uint8)
             plt.imshow(im2)
             plt.scatter(
                 pos2_aux[1, :], pos2_aux[0, :],
@@ -233,7 +266,7 @@ def loss_function(
         import ipdb; ipdb.set_trace()
         raise NoGradientError
 
-    # Final Loss function part 3: averaging
+    # Part 3: Average
     loss = loss / n_valid_samples
 
     return loss

@@ -48,7 +48,7 @@ def main():
     parser.set_defaults(use_validation=True) # Changed to true
 
     # Logging, plotting, checkpoints
-    parser.add_argument('--log_interval', type=int, default=250, help='loss logging interval')
+    parser.add_argument('--log_interval', type=int, default=50, help='loss logging interval')
     parser.add_argument('--log_file', type=str, default='log.txt', help='loss logging file')
     parser.add_argument('--plot', dest='plot', action='store_true', help='plot training pairs')
     parser.set_defaults(plot=True) # Changed to true
