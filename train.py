@@ -56,6 +56,7 @@ def main():
     parser.add_argument('--checkpoint_prefix', type=str, default='d2', help='prefix for training checkpoints')
 
     args = parser.parse_args()
+    if args.preprocessing == 'None': args.preprocessing = None
     print(args)
 
     # ---- Device ---- #
