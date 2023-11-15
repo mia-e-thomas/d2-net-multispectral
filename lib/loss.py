@@ -189,6 +189,8 @@ def loss_function(
                 batch['image1'][idx_in_batch].cpu().numpy(),
                 preprocessing=batch['preprocessing']
             )
+            # Mask images before displaying
+            im1 *= batch['optical']['valid_mask']
             plt.imshow(im1)
             plt.scatter(
                 pos1_aux[1, :], pos1_aux[0, :],
@@ -208,6 +210,8 @@ def loss_function(
                 batch['image2'][idx_in_batch].cpu().numpy(),
                 preprocessing=batch['preprocessing']
             )
+            # Mask images before displaying
+            im2 *= batch['thermal']['valid_mask']
             plt.imshow(im2)
             plt.scatter(
                 pos2_aux[1, :], pos2_aux[0, :],

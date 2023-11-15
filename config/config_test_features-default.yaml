@@ -28,13 +28,13 @@ dataset:
             mask_border: True
 
 feature:
-    type: 'sift' # 'd2-net', 'sift', or 'orb'
+    type: 'd2-net' # 'd2-net', 'sift', or 'orb'
     model: 'models/d2_tf.pth' # for d2-net
 
 matching: 
     method: 'ratio' # 'ratio' or 'crosscheck'
     ratio: 0.9 # for ratio test (if used)
-    ransac: False # boolean
+    ransac: True # boolean
     
 eval: 
     repeat_thresh: 4

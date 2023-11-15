@@ -30,7 +30,7 @@ def main():
     parser.add_argument('-y', '--yaml-config', default='config/config_test_features.yaml', help='YAML config file')
     parser.add_argument('-p', '--plot', dest='plot', action='store_true', default=False, help='')
     # D2-Net 
-    parser.add_argument('--model_file', type=str, default='models/d2_tf.pth', help='path to the full model')
+    #parser.add_argument('--model_file', type=str, default='models/d2_tf.pth', help='path to the full model')
     parser.add_argument('--preprocessing', type=str, default='torch', help='image preprocessing \'torch\' or None')
     parser.add_argument('--no-relu', dest='use_relu', default = True, action='store_false', help='remove ReLU after the dense feature extraction module') # Calling flag will store false
     parser.add_argument('--multiscale', dest='multiscale', action='store_true', default=False, help='extract multiscale features')
@@ -62,16 +62,17 @@ def main():
     device = torch.device("cuda:0" if use_cuda else "cpu")
     print("Device: " + str(device))
 
-    # ---- Model ---- #
-    # Creating CNN model
-    model = D2Net(
-        model_file=args.model_file,
-        use_relu=args.use_relu,
-        use_cuda=use_cuda
-    )
-
     # ---- Feature ---- #
     # TODO: MOVE THE FEATURE INSTANTIATION HERE******
+
+    # ---- Model ---- #
+    # Creating CNN model
+    if config['feature']['type'] == 'd2-net':
+        model = D2Net(
+            model_file=config['feature']['model'],
+            use_relu=args.use_relu,
+            use_cuda=use_cuda
+        )
 
     # ---- Matcher ---- #
     # Initialize matcher
@@ -114,6 +115,7 @@ def main():
             feature = cv2.SIFT_create(nfeatures = 500)
             kp_optical, des_optical = feature.detectAndCompute(img_optical, None)
             kp_thermal, des_thermal = feature.detectAndCompute(img_thermal, None)
+
         else: 
             raise ValueError('Unsupported feature type. Supported options are d2-net and sift.')
             
