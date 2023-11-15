@@ -207,7 +207,7 @@ def loss_function(
         # Added 1e-5 to denominator to avoid NaN (recommended by author in github issues)
         #loss = loss + ( torch.sum(scores1 * scores2 * F.relu(margin + diff)) / (torch.sum(scores1 * scores2) + 1e-5))
         # NEW ATTEMPT: REGULAR MARGIN LOSS
-        loss = loss + F.relu(margin + diff)
+        loss = loss + torch.sum(F.relu(margin + diff))
 
         has_grad = True
         n_valid_samples += 1
