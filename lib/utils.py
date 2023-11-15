@@ -63,7 +63,8 @@ def preprocess_multipoint(image, preprocessing=None):
 
 def imshow_image(image, preprocessing=None):
     if preprocessing is None:
-        pass
+        # Convert Multipoint to 0-255
+        image = (np.clip(image, 0.0, 1.0) * 255.0).astype(np.uint8)
     elif preprocessing == 'caffe':
         mean = np.array([103.939, 116.779, 123.68])
         image = image + mean.reshape([3, 1, 1])
