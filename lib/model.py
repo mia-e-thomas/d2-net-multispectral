@@ -110,7 +110,8 @@ class SoftDetectionModule(nn.Module):
 
         # Take max in another direction
         depth_wise_max = torch.max(batch, dim=1)[0]
-        depth_wise_max_score = batch / depth_wise_max.unsqueeze(1)
+        # Added to avoid NaN in extreme cases
+        depth_wise_max_score = batch / (depth_wise_max.unsqueeze(1) + 1e-8)
 
         all_scores = local_max_score * depth_wise_max_score
         score = torch.max(all_scores, dim=1)[0]

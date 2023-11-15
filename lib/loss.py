@@ -203,8 +203,11 @@ def loss_function(
         scores2 = scores2[fmap_pos2[0, :], fmap_pos2[1, :]]
 
         # Part 2: Loss for index
+        # ORIGINAL: SOFT-SCORE WEIGHTED MARGIN LOSS (meant to enhance repeatability)
         # Added 1e-5 to denominator to avoid NaN (recommended by author in github issues)
-        loss = loss + ( torch.sum(scores1 * scores2 * F.relu(margin + diff)) / (torch.sum(scores1 * scores2) + 1e-5))
+        #loss = loss + ( torch.sum(scores1 * scores2 * F.relu(margin + diff)) / (torch.sum(scores1 * scores2) + 1e-5))
+        # NEW ATTEMPT: REGULAR MARGIN LOSS
+        loss = loss + F.relu(margin + diff)
 
         has_grad = True
         n_valid_samples += 1
