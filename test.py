@@ -102,6 +102,10 @@ def main():
         img_optical = preprocess_multipoint(img_pair['optical']['image'])
         img_thermal = preprocess_multipoint(img_pair['thermal']['image'])
 
+        # Set homographies
+        if 'homography' not in img_pair['optical'].keys(): img_pair['optical']['homography'] = torch.eye(3).view(1,3,3) 
+        if 'homography' not in img_pair['thermal'].keys(): img_pair['thermal']['homography'] = torch.eye(3).view(1,3,3) 
+
         # ---- Detect & Describe ---- #
         if config['feature']['type'] == 'd2-net':
             # D2-Net
@@ -228,10 +232,14 @@ class Matcher():
         if (len(des1)==0) or (len(des2)==0): return []
 
         if self.method=='ratio': 
+            # Handle too few descriptors
+            if (len(des1)==1) or (len(des2)==1): return []
+
             knn_matches = self.matcher.knnMatch(des1, des2, k=2)
             # Ratio Test
             matches = []
             for first, second in knn_matches: 
+                if second is None: continue
                 if first.distance < self.ratio*second.distance: matches.append(first)
 
         elif self.method=='crosscheck': 
