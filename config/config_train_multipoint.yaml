@@ -2,8 +2,8 @@ dataset:
     filename: multipoint_data/training.hdf5
     single_image: false
     random_pairs: true 
-    height: 240
-    width: 320
+    height: 512
+    width: 640
     augmentation:
         photometric:
             enable: false # Not going to train or test w/ photometric augmentation (hard to say how valid it is on cross-spectral data)
@@ -20,7 +20,7 @@ dataset:
                     kernel_size_range: [50, 100]
                 motion_blur: {max_kernel_size: 3}
         homographic:
-            enable: true
+            enable: False
             params:
                 translation: true
                 rotation: true
@@ -35,4 +35,4 @@ dataset:
                 translation_overflow: 0.05
             valid_border_margin: 0
             border_reflect: true 
-
+    subset: 0.05

@@ -45,7 +45,7 @@ def main():
     # Dataset
     parser.add_argument('--num_workers', type=int, default=4, help='number of workers for data loading')
     parser.add_argument('--use_validation', dest='use_validation', action='store_true', help='use the validation split')
-    parser.set_defaults(use_validation=True) # Changed to true
+    parser.set_defaults(use_validation=False) # Changed to true
 
     # Logging, plotting, checkpoints
     parser.add_argument('--log_interval', type=int, default=50, help='loss logging interval')
@@ -93,16 +93,15 @@ def main():
     # TODO: The original code set "train=False" when constructing validation set. See if there's some type of equivalent way you can do that.
     training_dataset = ImagePairDataset(config['dataset'])
 
+    # Portion Dataset
+    len_dataset= len(training_dataset.memberslist)
+    len_dataset_reduced = round(config['dataset']['subset']*len_dataset)
     if args.use_validation:
-        # Get training & val lengths 
-        len_dataset = len(training_dataset.memberslist)
-        # TODO: make this 20% an argument or yaml parameter
-        len_validation = round(0.2*len_dataset)
-        len_training = len_dataset - len_validation
-        # Split training and validation
-        training_dataset, validation_dataset = random_split(training_dataset, [len_training, len_validation])
-        # Get dataloader
+        len_validation = round(0.2*len_dataset_reduced)
+        training_dataset, validation_dataset, training_dataset_remaining = random_split(training_dataset, [len_dataset_reduced-len_validation, len_validation, len_dataset-len_dataset_reduced])
         validation_dataloader = DataLoader(validation_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
+    else:
+        training_dataset, training_dataset_remaining = random_split(training_dataset, [len_dataset_reduced, len_dataset-len_dataset_reduced])
 
     # Get dataloader
     training_dataloader = DataLoader(training_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.num_workers)
