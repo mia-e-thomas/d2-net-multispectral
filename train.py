@@ -45,7 +45,7 @@ def main():
     # Dataset
     parser.add_argument('--num_workers', type=int, default=4, help='number of workers for data loading')
     parser.add_argument('--use_validation', dest='use_validation', action='store_true', help='use the validation split')
-    parser.set_defaults(use_validation=False) # Changed to true
+    parser.set_defaults(use_validation=True) # Changed to true
 
     # Logging, plotting, checkpoints
     parser.add_argument('--log_interval', type=int, default=50, help='loss logging interval')

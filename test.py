@@ -120,6 +120,13 @@ def main():
             kp_optical, des_optical = feature.detectAndCompute(img_optical, None)
             kp_thermal, des_thermal = feature.detectAndCompute(img_thermal, None)
 
+        elif config['feature']['type'] == 'orb':
+            # Initiate ORB detector
+            feature = cv2.ORB_create()
+            # Keypoints
+            kp_optical, des_optical = feature.detectAndCompute(img_optical, None)
+            kp_thermal, des_thermal = feature.detectAndCompute(img_thermal, None)
+
         else: 
             raise ValueError('Unsupported feature type. Supported options are d2-net and sift.')
             
