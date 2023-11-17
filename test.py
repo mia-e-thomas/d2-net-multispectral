@@ -39,7 +39,9 @@ def main():
     parser.add_argument('--max_sum_edges', type=int, default=2800, help='maximum sum of image sizes at network input')
     # Other
     parser.add_argument('-s', '--seed', default=0, type=int, help='Seed of the random generators')
+
     args = parser.parse_args()
+    if args.preprocessing == 'None': args.preprocessing = None
 
     # ---- YAML Config ---- #
     with open(args.yaml_config, 'r') as f:
