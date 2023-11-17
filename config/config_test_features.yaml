@@ -3,6 +3,8 @@ dataset:
     single_image: False
     random_pairs: False
     return_name : True
+    height: 240
+    width: 320
     augmentation: 
         photometric: 
             enable: False # Not going to train or test w/ photometric augmentation (hard to say how valid it is on cross-spectral data)
@@ -10,7 +12,7 @@ dataset:
             params: 
             random_order: True
         homographic: 
-            enable: True
+            enable: False
             params:
                 translation: true
                 rotation: true
@@ -28,13 +30,13 @@ dataset:
             mask_border: True
 
 feature:
-    type: 'sift' # 'd2-net', 'sift', or 'orb'
-    model: 'models/d2_tf.pth' # for d2-net
+    type: 'd2-orb' # 'd2-net', 'sift', or 'orb', 'd2-orb'
+    model: 'models/rosetta-debug-nov-16-3/d2.10.pth' # for d2-net
 
 matching: 
     method: 'ratio' # 'ratio' or 'crosscheck'
     ratio: 0.9 # for ratio test (if used)
-    ransac: False # boolean
+    ransac: True # boolean
     
 eval: 
     repeat_thresh: 4
