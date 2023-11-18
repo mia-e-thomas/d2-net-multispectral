@@ -130,9 +130,18 @@ def main():
             # Keypoints
             kp_optical = feature.detect(img_optical, None)
             kp_thermal = feature.detect(img_thermal, None)
-            # Describe
-            des_optical = d2_net_describe(args, img_optical, kp_optical, model, device)
-            des_thermal = d2_net_describe(args, img_thermal, kp_thermal, model, device)
+
+            # Describe & handle no kp
+            if (len(kp_optical)>0): 
+                des_optical = d2_net_describe(args, img_optical, kp_optical, model, device)
+            else:
+                des_optical = []
+
+            if (len(kp_thermal)>0): 
+                des_thermal = d2_net_describe(args, img_thermal, kp_thermal, model, device)
+            else:
+                des_thermal = []
+                
 
         elif config['feature']['type'] == 'orb':
             # Initiate ORB detector
@@ -530,7 +539,7 @@ def d2_net_describe(args, image, kp, model, device):
         raw_descriptors, pos, ids = interpolate_dense_features(torch.tensor(keypoints.T).to(device), dense_features[0])
         
         # Turn descriptors into list
-        descriptors = raw_descriptors.numpy().T
+        descriptors = raw_descriptors.cpu().numpy().T
 
     return descriptors
 
