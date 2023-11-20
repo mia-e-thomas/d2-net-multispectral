@@ -124,9 +124,29 @@ def main():
             kp_optical, des_optical = feature.detectAndCompute(img_optical, None)
             kp_thermal, des_thermal = feature.detectAndCompute(img_thermal, None)
 
+        elif config['feature']['type'] == 'd2-sift':
+            # Initiate SIFT detector
+            feature = cv2.SIFT_create(nfeatures = 500)
+
+            # Keypoints
+            kp_optical = feature.detect(img_optical, None)
+            kp_thermal = feature.detect(img_thermal, None)
+
+            # Describe & handle no kp
+            if (len(kp_optical)>0): 
+                des_optical = d2_net_describe(args, img_optical, kp_optical, model, device)
+            else:
+                des_optical = []
+
+            if (len(kp_thermal)>0): 
+                des_thermal = d2_net_describe(args, img_thermal, kp_thermal, model, device)
+            else:
+                des_thermal = []
+
         elif config['feature']['type'] == 'd2-orb':
             # Initiate ORB detector
             feature = cv2.ORB_create()
+
             # Keypoints
             kp_optical = feature.detect(img_optical, None)
             kp_thermal = feature.detect(img_thermal, None)
