@@ -30,8 +30,8 @@ dataset:
             mask_border: True
 
 feature:
-    type: 'd2-orb' # 'd2-net', 'sift', or 'orb', 'd2-orb'
-    model: 'models/rosetta-debug-nov-16-3/d2.10.pth' # for d2-net
+    type: 'd2-orb' # 'd2-net', 'sift', or 'orb', 'd2-orb' (orb detector, d2 descriptor), 'd2-sift' (SIFT detector, d2 descriptor)
+    model: 'models/debug-nov-18-1/checkpoints/d2.15.pth' # for d2-net
 
 matching: 
     method: 'ratio' # 'ratio' or 'crosscheck'
@@ -43,4 +43,4 @@ eval:
     match_thresh: 4  # Distance below which two points are considered a match
 
 saving:
-    results_folder: ./results/
+    results_prefix: ./results/

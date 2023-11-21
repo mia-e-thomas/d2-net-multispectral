@@ -30,6 +30,7 @@ def main():
     parser = argparse.ArgumentParser(description='Project Test Script')
     # Important & required 
     parser.add_argument('-y', '--yaml-config', default='config/config_test_features.yaml', help='YAML config file')
+    parser.add_argument('-o', '--output_folder', default=None, help='Output folder (after prefix). By default, set to results-<timestamp>')
     parser.add_argument('-p', '--plot', dest='plot', action='store_true', default=False, help='')
     # D2-Net 
     #parser.add_argument('--model_file', type=str, default='models/d2_tf.pth', help='path to the full model')
@@ -71,7 +72,7 @@ def main():
 
     # ---- Model ---- #
     # Creating CNN model
-    if (config['feature']['type'] == 'd2-net') or (config['feature']['type'] == 'd2-orb'):
+    if 'd2' in config['feature']['type']:
         model = D2Net(
             model_file=config['feature']['model'],
             use_relu=args.use_relu,
@@ -134,12 +135,12 @@ def main():
 
             # Describe & handle no kp
             if (len(kp_optical)>0): 
-                des_optical = d2_net_describe(args, img_optical, kp_optical, model, device)
+                kp_optical, des_optical = d2_net_describe(args, img_optical, kp_optical, model, device)
             else:
                 des_optical = []
 
             if (len(kp_thermal)>0): 
-                des_thermal = d2_net_describe(args, img_thermal, kp_thermal, model, device)
+                kp_thermal, des_thermal = d2_net_describe(args, img_thermal, kp_thermal, model, device)
             else:
                 des_thermal = []
 
@@ -153,12 +154,12 @@ def main():
 
             # Describe & handle no kp
             if (len(kp_optical)>0): 
-                des_optical = d2_net_describe(args, img_optical, kp_optical, model, device)
+                kp_optical, des_optical = d2_net_describe(args, img_optical, kp_optical, model, device)
             else:
                 des_optical = []
 
             if (len(kp_thermal)>0): 
-                des_thermal = d2_net_describe(args, img_thermal, kp_thermal, model, device)
+                kp_thermal, des_thermal = d2_net_describe(args, img_thermal, kp_thermal, model, device)
             else:
                 des_thermal = []
                 
@@ -237,10 +238,16 @@ def main():
 
     # ---- Save Results ---- #
     # Make directory
-    results_folder = os.path.join(
-        os.getcwd(), 
-        config['saving']['results_folder'], 
-        "results-{date:%Y-%m-%d-%H-%M-%S}".format(date=datetime.datetime.now()) ) 
+    if args.output_folder is not None: 
+        results_folder = os.path.join(
+            os.getcwd(), 
+            config['saving']['results_prefix'], 
+            args.output_folder) 
+    else: 
+        results_folder = os.path.join(
+            os.getcwd(), 
+            config['saving']['results_prefix'], 
+            "results-{date:%Y-%m-%d-%H-%M-%S}".format(date=datetime.datetime.now()) ) 
     os.mkdir(results_folder)
 
     # Dump config, command line args, results
@@ -559,9 +566,10 @@ def d2_net_describe(args, image, kp, model, device):
         raw_descriptors, pos, ids = interpolate_dense_features(torch.tensor(keypoints.T).to(device), dense_features[0])
         
         # Turn descriptors into list
+        kp_new = [kp[id] for id in ids]
         descriptors = raw_descriptors.cpu().numpy().T
 
-    return descriptors
+    return kp_new, descriptors
 
 
 '''

@@ -28,6 +28,7 @@ def main():
     parser = argparse.ArgumentParser(description='Project Test Script')
     # Important & required 
     parser.add_argument('-y', '--yaml-config', default='config/config_test_features.yaml', help='YAML config file')
+    parser.add_argument('-o', '--output_folder', default=None, help='Output folder (after prefix). By default, set to results-<timestamp>')
     parser.add_argument('-p', '--plot', dest='plot', action='store_true', default=False, help='')
     # D2-Net 
     #parser.add_argument('--model_file', type=str, default='models/d2_tf.pth', help='path to the full model')
@@ -192,10 +193,16 @@ def main():
 
     # ---- Save Results ---- #
     # Make directory
-    results_folder = os.path.join(
-        os.getcwd(), 
-        config['saving']['results_folder'], 
-        "results-{date:%Y-%m-%d-%H-%M-%S}".format(date=datetime.datetime.now()) ) 
+    if args.output_folder is not None: 
+        results_folder = os.path.join(
+            os.getcwd(), 
+            config['saving']['results_prefix'], 
+            args.output_folder) 
+    else: 
+        results_folder = os.path.join(
+            os.getcwd(), 
+            config['saving']['results_prefix'], 
+            "results-{date:%Y-%m-%d-%H-%M-%S}".format(date=datetime.datetime.now()) ) 
     os.mkdir(results_folder)
 
     # Dump config, command line args, results
