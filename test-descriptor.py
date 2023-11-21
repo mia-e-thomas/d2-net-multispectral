@@ -30,7 +30,7 @@ def main():
     parser = argparse.ArgumentParser(description='Project Test Script')
     # Important & required 
     parser.add_argument('-y', '--yaml-config', default='config/config_test_features.yaml', help='YAML config file')
-    parser.add_argument('-o', '--output_folder', default=None, help='Output folder (after prefix). By default, set to results-<timestamp>')
+    parser.add_argument('-o', '--output_folder', required=True, help='Output folder (after prefix).')
     parser.add_argument('-p', '--plot', dest='plot', action='store_true', default=False, help='')
     # D2-Net 
     #parser.add_argument('--model_file', type=str, default='models/d2_tf.pth', help='path to the full model')
@@ -85,10 +85,10 @@ def main():
 
     # ---- Init Results ---- #
     results = {
-        'points_repeated': 0,
+        'points_repeated': np.zeros((len(config['eval']['repeat_thresh'])),dtype=float),
         'points_optical': 0,
         'points_thermal': 0,
-        'matches_correct': 0,
+        'matches_correct': np.zeros((len(config['eval']['match_thresh'])),dtype=float),
         'matches_total': 0,
         'iterations': 0,
     }
@@ -163,7 +163,6 @@ def main():
             else:
                 des_thermal = []
                 
-
         elif config['feature']['type'] == 'orb':
             # Initiate ORB detector
             feature = cv2.ORB_create()
@@ -186,20 +185,29 @@ def main():
             matches = ransac(kp_optical, kp_thermal, matches)
 
         # ---- Compute Repeatability ---- #
-        # Compute
-        repeatability, points_repeated, points_optical, points_thermal = compute_repeatability(kp_optical, img_pair['optical']['homography'], kp_thermal, img_pair['thermal']['homography'], threshold = config['eval']['repeat_thresh'])
+        for i, r_thresh in enumerate(config['eval']['repeat_thresh']):
 
-        # Add to total stats
-        results['points_repeated'] += points_repeated
+            # Compute at given threshold
+            repeatability, points_repeated, points_optical, points_thermal = compute_repeatability(kp_optical, img_pair['optical']['homography'], kp_thermal, img_pair['thermal']['homography'], threshold = r_thresh)
+        
+            # Add to total stats
+            results['points_repeated'][i] += points_repeated
+
+        # Take the last iteration since it should be the same each time
         results['points_optical']  += points_optical
         results['points_thermal']  += points_thermal
 
 
         # ---- Compute MMA ---- #
-        # Compute
-        mma, m_correct, m_total = compute_mma(kp_optical, img_pair['optical']['homography'], kp_thermal, img_pair['thermal']['homography'], matches, threshold = config['eval']['match_thresh'])
-        # Add to total stats
-        results['matches_correct'] += m_correct
+        for j, m_thresh in enumerate(config['eval']['match_thresh']):
+
+            # Compute
+            mma, m_correct, m_total = compute_mma(kp_optical, img_pair['optical']['homography'], kp_thermal, img_pair['thermal']['homography'], matches, threshold = m_thresh)
+
+            # Add to total stats
+            results['matches_correct'][j] += m_correct
+
+        # Take the last iteration since it should be the same each time
         results['matches_total']   += m_total
         results['iterations'] += 1
 
@@ -221,20 +229,18 @@ def main():
 
     # ---- Average Stats ---- #
     # Compute totall mma and repeatability
-    results['repeatability'] = float(results['points_repeated']/(results['points_optical'] + results['points_thermal']))
-    results['mma'] = float(results['matches_correct'] / results['matches_total'])
+    results['repeatability'] = [float(repeated/(results['points_optical'] + results['points_thermal'])) for repeated in results['points_repeated']]
+    results['mma'] = [float(correct/ results['matches_total']) for correct in results['matches_correct']]
+
     # Average rest of stats
-    results['avg_points_repeated']= float(results['points_repeated'] / results['iterations'])
+    results['avg_points_repeated']= [float(repeated/results['iterations']) for repeated in results['points_repeated']]
     results['avg_points_optical'] = float(results['points_optical']  / results['iterations'])
     results['avg_points_thermal'] = float(results['points_thermal']  / results['iterations'])
-    results['avg_matches_correct']= float(results['matches_correct'] / results['iterations'])
+    results['avg_matches_correct']= [float(correct/results['iterations']) for correct in results['matches_correct']]
     results['avg_matches_total']  = float(results['matches_total']   / results['iterations'])
     # Nicely format
-    results['points_repeated'] = int(results['points_repeated'])
-    results['points_optical']  = int(results['points_optical']) 
-    results['points_thermal']  = int(results['points_thermal']) 
-    results['matches_correct'] = int(results['matches_correct']) 
-    results['matches_total']   = int(results['matches_total']) 
+    results['points_repeated'] = [int(repeated) for repeated in results['points_repeated']]
+    results['matches_correct'] = [int(correct) for correct in results['matches_correct']]
 
     # ---- Save Results ---- #
     # Make directory
