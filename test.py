@@ -32,7 +32,7 @@ def main():
     parser.add_argument('-p', '--plot', dest='plot', action='store_true', default=False, help='')
     # D2-Net 
     #parser.add_argument('--model_file', type=str, default='models/d2_tf.pth', help='path to the full model')
-    parser.add_argument('--preprocessing', type=str, default='torch', help='image preprocessing \'torch\' or None')
+    parser.add_argument('--preprocessing', type=str, default=None, help='image preprocessing \'torch\' or None')
     parser.add_argument('--no-relu', dest='use_relu', default = True, action='store_false', help='remove ReLU after the dense feature extraction module') # Calling flag will store false
     parser.add_argument('--multiscale', dest='multiscale', action='store_true', default=False, help='extract multiscale features')
     # D2-net ones (that I won't need to change)

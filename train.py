@@ -33,7 +33,7 @@ def main():
     parser.add_argument('-mi', '--model_input_file', type=str, default=None, help='path to the full model') # Changed default
     # Flag '--no-vgg16-init' will set 'vgg16_init' to false, and prevent 'DenseFeatureExtractionModule' from initializing with vgg16 weights
     parser.add_argument('--no-vgg16-init', dest='vgg16_init', default = True, action='store_false', help='Prevent initialization with pre-trained vgg16') # Calling flag will store false
-    parser.add_argument('--preprocessing', type=str, default='torch', help='image preprocessing (caffe or torch)')
+    parser.add_argument('--preprocessing', type=str, default=None, help='image preprocessing (caffe or torch)')
 
     # TODO: Switch the rest of the args to a yaml file
     # Training Hyperparams
@@ -48,7 +48,7 @@ def main():
     parser.set_defaults(use_validation=True) # Changed to true
 
     # Logging, plotting, checkpoints
-    parser.add_argument('--log_interval', type=int, default=50, help='loss logging interval')
+    parser.add_argument('--log_interval', type=int, default=250, help='loss logging interval')
     parser.add_argument('--log_file', type=str, default='log.txt', help='loss logging file')
     parser.add_argument('--plot', dest='plot', action='store_true', help='plot training pairs')
     parser.set_defaults(plot=True) # Changed to true
