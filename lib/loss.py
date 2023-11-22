@@ -24,7 +24,7 @@ import os
 # Instead of using depth, instrinics, poses, and bboxs
 # Correspondences are found with homographies and masks
 def loss_function(
-        model, batch, device, margin=1, safe_radius=4, scaling_steps=3, plot=False, plot_path=None,
+        model, batch, device, margin=1, safe_radius=4, scaling_steps=3, plot=False, plot_path=None, weighted_loss=False
 ):
     output = model({
         'image1': batch['image1'].to(device),
@@ -205,9 +205,11 @@ def loss_function(
         # Part 2: Loss for index
         # ORIGINAL: SOFT-SCORE WEIGHTED MARGIN LOSS (meant to enhance repeatability)
         # Added 1e-5 to denominator to avoid NaN (recommended by author in github issues)
-        #loss = loss + ( torch.sum(scores1 * scores2 * F.relu(margin + diff)) / (torch.sum(scores1 * scores2) + 1e-5))
+        if weighted_loss:
+            loss = loss + ( torch.sum(scores1 * scores2 * F.relu(margin + diff)) / (torch.sum(scores1 * scores2) + 1e-5))
         # NEW ATTEMPT: REGULAR MARGIN LOSS
-        loss = loss + torch.sum(F.relu(margin + diff))
+        else:
+            loss = loss + torch.sum(F.relu(margin + diff))
 
         has_grad = True
         n_valid_samples += 1

@@ -31,6 +31,8 @@ def main():
     parser.add_argument('-y', '--yaml-config', default='config/config_train_multipoint.yaml', help='YAML config file')
     parser.add_argument('-mo', '--model_output_dir', type=str, required=True, help='Directory to save model outputs')
     parser.add_argument('-mi', '--model_input_file', type=str, default=None, help='path to the full model') # Changed default
+    parser.add_argument('--weighted_loss', type=bool, default=False, help='Loss weighted by scores') 
+    parser.add_argument('--safe_radius',   type=int, default=4, help='Distance (in pixels) at which descriptors no long correspond') 
     # Flag '--no-vgg16-init' will set 'vgg16_init' to false, and prevent 'DenseFeatureExtractionModule' from initializing with vgg16 weights
     parser.add_argument('--no-vgg16-init', dest='vgg16_init', default = True, action='store_false', help='Prevent initialization with pre-trained vgg16') # Calling flag will store false
     parser.add_argument('--preprocessing', type=str, default=None, help='image preprocessing (caffe or torch)')
@@ -271,7 +273,7 @@ def process_epoch(
         #------#
 
         try:
-            loss = loss_function(model, batch, device, plot=args.plot, plot_path=plot_path)
+            loss = loss_function(model, batch, device, safe_radius=args.safe_radius, plot=args.plot, plot_path=plot_path, weighted_loss=args.weighted_loss)
         except NoGradientError:
             continue
 
