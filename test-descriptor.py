@@ -121,13 +121,15 @@ def main():
             # SIFT
             # TODO: move the feature instantiation before the loop
             # TODO: Have 'nfeatures' as a kwargs parameter?
-            feature = cv2.SIFT_create(nfeatures = 500)
+            #feature = cv2.SIFT_create(nfeatures = 500)
+            feature = cv2.SIFT_create()
             kp_optical, des_optical = feature.detectAndCompute(img_optical, None)
             kp_thermal, des_thermal = feature.detectAndCompute(img_thermal, None)
 
         elif config['feature']['type'] == 'd2-sift':
             # Initiate SIFT detector
-            feature = cv2.SIFT_create(nfeatures = 500)
+            #feature = cv2.SIFT_create(nfeatures = 500)
+            feature = cv2.SIFT_create()
 
             # Keypoints
             kp_optical = feature.detect(img_optical, None)
